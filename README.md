@@ -1,3 +1,3 @@
 # Modpack
 
-A description of this package.
+Swift package for managing modpacks.
