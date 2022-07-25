@@ -76,6 +76,12 @@ struct Mod: Codable {
 	let url: String?
 }
 
+struct Config: Codable {
+	let loader: String
+	let versions: [String]
+	let mods: [Mod]
+}
+
 struct Project: Codable {
 	let title: String
 }
@@ -97,9 +103,6 @@ struct Version: Codable {
 	let dependencies: [Dependency]?
 	let files: [File]
 }
-
-let loader = "fabric"
-let gameVersions = ["1.18.2", "1.18.1", "1.18"]
 
 @main
 struct Modpack: AsyncParsableCommand {
@@ -157,7 +160,7 @@ struct Modpack: AsyncParsableCommand {
 			return try JSONDecoder().decode(Project.self, from: data)
 		}
 		
-		private static func getVersion(for projectId: String, version: String) async throws -> [Version] {
+		private static func getVersion(for projectId: String, _ loader: String, _ version: String) async throws -> [Version] {
 			var components = Update.baseURLComponents
 			components.path.append("\(projectId)/version")
 			components.queryItems = [
@@ -173,8 +176,8 @@ struct Modpack: AsyncParsableCommand {
 			return try JSONDecoder().decode([Version].self, from: data)
 		}
 		
-		private static func getVersion(for mod: Mod, version: String) async throws -> [Version] {
-			try await getVersion(for: mod.id, version: version)
+		private static func getVersion(for mod: Mod, _ loader: String, _ version: String) async throws -> [Version] {
+			try await getVersion(for: mod.id, loader, version)
 		}
 		
 		private static func updateCurseForge(_ mod: Mod, _ reloadCurseForge: Bool) async throws {
@@ -195,7 +198,7 @@ struct Modpack: AsyncParsableCommand {
 			try FileManager.default.moveItem(at: downloadURL, to: saveURL)
 		}
 		
-		private static func update(_ mod: Mod, _ skipConfirmation: Bool, _ showChangelog: Bool, dependency: Bool = false) async throws {
+		private static func update(_ mod: Mod, _ loader: String, _ mcVersions: [String], _ skipConfirmation: Bool, _ showChangelog: Bool, dependency: Bool = false) async throws {
 			let dependencyLogModifier = dependency ? " dependency" : ""
 			
 			let project = try await Update.getProject(for: mod.id)
@@ -203,14 +206,14 @@ struct Modpack: AsyncParsableCommand {
 			logger.info("Fetching versions for\(dependencyLogModifier) \(project.title)...")
 			
 			var versions: [Version] = []
-			for gameVersion in gameVersions {
-				versions = try await Update.getVersion(for: mod, version: gameVersion)
+			for mcVersion in mcVersions {
+				versions = try await Update.getVersion(for: mod, loader, mcVersion)
 				
 				guard versions.isEmpty else {
 					break
 				}
 				
-				logger.notice("No versions of\(dependencyLogModifier) \(project.title) found for Minecraft \(gameVersion)")
+				logger.notice("No versions of\(dependencyLogModifier) \(project.title) found for Minecraft \(mcVersion)")
 			}
 			
 			
@@ -227,13 +230,16 @@ struct Modpack: AsyncParsableCommand {
 			
 			logger.info("A new version of\(dependencyLogModifier) \(project.title) is available [\(latestVersion.version_number)]")
 			
+			var currentFilePath: String?
 			for version in versions {
+				
 				guard let versionFile = version.files.first else {
 					continue
 				}
 				
 				let currentFileURL = modsURL.appendingPathComponent(versionFile.filename)
 				if FileManager.default.fileExists(atPath: currentFileURL.path) {
+					currentFilePath = currentFileURL.path
 					break
 				}
 				
@@ -258,6 +264,11 @@ struct Modpack: AsyncParsableCommand {
 				}
 			}
 			
+			if let currentFilePath = currentFilePath {
+				logger.info("Removing old version...")
+				try FileManager.default.removeItem(atPath: currentFilePath)
+			}
+			
 			logger.info("Downloading latest version...")
 			
 			var request = URLRequest(url: URL(string: file.url)!)
@@ -274,7 +285,7 @@ struct Modpack: AsyncParsableCommand {
 				}
 				
 				let dependencyMod = Mod(name: "dependency", id: projectId, url: nil)
-				try await update(dependencyMod, skipConfirmation, showChangelog, dependency: true)
+				try await update(dependencyMod, loader, mcVersions, skipConfirmation, showChangelog, dependency: true)
 			}
 		}
 		
@@ -282,18 +293,18 @@ struct Modpack: AsyncParsableCommand {
 			logger.logLevel = verbose ? .trace : .info
 			
 			let configData = try Data(contentsOf: URL(fileURLWithPath: configPath))
-			let mods = try JSONDecoder().decode([Mod].self, from: configData)
+			let config = try JSONDecoder().decode(Config.self, from: configData)
 			
-			logger.info("Checking mod list for updates for Minecraft version(s) [\(gameVersions.joined(separator: ", "))]")
+			logger.info("Checking mod list for updates for Minecraft version(s) [\(config.versions.joined(separator: ", "))]")
 			
 			if !FileManager.default.fileExists(atPath: Update.modsURL.path) {
 				logger.debug("'mods' directory does not exist, creating...")
 				try FileManager.default.createDirectory(at: Update.modsURL, withIntermediateDirectories: true)
 			}
 			
-			for mod in mods {
+			for mod in config.mods {
 				if mod.url == nil {
-					try await Update.update(mod, skipConfirmation, showChangelog, dependency: false)
+					try await Update.update(mod, config.loader, config.versions, skipConfirmation, showChangelog, dependency: false)
 				} else {
 					try await Update.updateCurseForge(mod, reloadCurseForge)
 				}
