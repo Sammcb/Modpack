@@ -106,7 +106,127 @@ struct Version: Codable {
 
 @main
 struct Modpack: AsyncParsableCommand {
-	static var configuration = CommandConfiguration(abstract: "A utility for managing modpacks.", version: "1.0.0", subcommands: [Update.self])
+	static var configuration = CommandConfiguration(abstract: "A utility for managing modpacks.", version: "2.0.0", subcommands: [Update.self, Report.self])
+	
+	private static let modsURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appendingPathComponent("mods")
+	
+	private static var baseURLComponents: URLComponents {
+		var components = URLComponents()
+		components.scheme = "https"
+		components.host = "api.modrinth.com"
+		components.path = "/v2/project/"
+		return components
+	}
+	
+	private static func getProject(for id: String) async throws -> Project {
+		var components = Modpack.baseURLComponents
+		components.path.append("\(id)")
+		
+		var request = URLRequest(url: components.url!)
+		request.httpMethod = "GET"
+		
+		let (data, _) = try await URLSession.shared.data(for: request)
+		
+		return try JSONDecoder().decode(Project.self, from: data)
+	}
+	
+	private static func getVersion(for projectId: String, _ loader: String, _ version: String) async throws -> [Version] {
+		var components = Modpack.baseURLComponents
+		components.path.append("\(projectId)/version")
+		components.queryItems = [
+			URLQueryItem(name: "loaders", value: "[\"\(loader)\"]"),
+			URLQueryItem(name: "game_versions", value: "[\"\(version)\"]")
+		]
+		
+		var request = URLRequest(url: components.url!)
+		request.httpMethod = "GET"
+		
+		let (data, _) = try await URLSession.shared.data(for: request)
+		
+		return try JSONDecoder().decode([Version].self, from: data)
+	}
+	
+	private static func getVersion(for mod: Mod, _ loader: String, _ version: String) async throws -> [Version] {
+		try await getVersion(for: mod.id, loader, version)
+	}
+	
+	struct Report: AsyncParsableCommand {
+		struct ModReport {
+			let name: String
+			let valid: Bool
+			let dependency: Bool
+		}
+		
+		static var configuration = CommandConfiguration(abstract: "Check modpack compatibility for a specified Minecraft version.")
+		
+		@Argument(help: "Mod list json file.")
+		var configPath: String
+		
+		@Argument(help: "Minecraft version to check compatibility with.")
+		var version: String
+		
+		private static func report(_ mod: Mod, _ loader: String, _ version: String, dependency: Bool = false) async throws -> [ModReport] {
+			let project = try await Modpack.getProject(for: mod.id)
+			let versions = try await Modpack.getVersion(for: mod, loader, version)
+			
+			guard let validVersion = versions.first else {
+				return [ModReport(name: project.title, valid: false, dependency: dependency)]
+			}
+			
+			var modReport = [ModReport(name: project.title, valid: true, dependency: dependency)]
+			for modDependency in validVersion.dependencies ?? [] {
+				guard let projectId = modDependency.project_id else {
+					continue
+				}
+				
+				let dependencyMod = Mod(name: "dependency", id: projectId, url: nil)
+				let dependencyReports = try await report(dependencyMod, loader, version, dependency: true)
+				
+				modReport.append(contentsOf: dependencyReports)
+			}
+			
+			return modReport
+		}
+		
+		func validate() throws {
+			let configFileURL = URL(fileURLWithPath: configPath)
+			
+			guard configFileURL.pathExtension == "json" else {
+				throw ValidationError("Mod list must be a json file.")
+			}
+			
+			guard FileManager.default.fileExists(atPath: configFileURL.path) else {
+				throw ValidationError("Mod list file does not exist.")
+			}
+		}
+		
+		private static let modsURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appendingPathComponent("mods")
+		
+		mutating func run() async throws {
+			logger.logLevel = .info
+			
+			let configData = try Data(contentsOf: URL(fileURLWithPath: configPath))
+			let config = try JSONDecoder().decode(Config.self, from: configData)
+			
+			logger.info("Generating report for Minecraft version \(version)...")
+			
+			var modReports: [ModReport] = []
+			for mod in config.mods where mod.url == nil {
+				let modReport = try await Report.report(mod, config.loader, version)
+				modReports.append(contentsOf: modReport)
+			}
+			
+			let readyCount = modReports.filter({ $0.valid }).count
+			logger.info("Total")
+			logger.info("[\(readyCount)/\(modReports.count)] support \(version)\n")
+			logger.notice("Mods not compatible:\n\(modReports.filter({ !$0.valid }).map({ $0.name }).joined(separator: "\n"))\n")
+			let dependencyReadyCount = modReports.filter({ $0.valid && $0.dependency }).count
+			let dependencyCount = modReports.filter({ $0.dependency }).count
+			logger.info("Dependency")
+			logger.info("[\(dependencyReadyCount)/\(dependencyCount)] support \(version)\n")
+			logger.warning("CurseForge mods need to be checked manually.")
+		}
+	}
 	
 	struct Update: AsyncParsableCommand {
 		static var configuration = CommandConfiguration(abstract: "Update installed mods.")
@@ -126,16 +246,6 @@ struct Modpack: AsyncParsableCommand {
 		@Flag(name: .shortAndLong, help: "Print trace and debug information.")
 		var verbose = false
 		
-		private static let modsURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appendingPathComponent("mods")
-		
-		private static var baseURLComponents: URLComponents {
-			var components = URLComponents()
-			components.scheme = "https"
-			components.host = "api.modrinth.com"
-			components.path = "/v2/project/"
-			return components
-		}
-		
 		func validate() throws {
 			let configFileURL = URL(fileURLWithPath: configPath)
 			
@@ -146,38 +256,6 @@ struct Modpack: AsyncParsableCommand {
 			guard FileManager.default.fileExists(atPath: configFileURL.path) else {
 				throw ValidationError("Mod list file does not exist.")
 			}
-		}
-		
-		private static func getProject(for id: String) async throws -> Project {
-			var components = Update.baseURLComponents
-			components.path.append("\(id)")
-			
-			var request = URLRequest(url: components.url!)
-			request.httpMethod = "GET"
-			
-			let (data, _) = try await URLSession.shared.data(for: request)
-			
-			return try JSONDecoder().decode(Project.self, from: data)
-		}
-		
-		private static func getVersion(for projectId: String, _ loader: String, _ version: String) async throws -> [Version] {
-			var components = Update.baseURLComponents
-			components.path.append("\(projectId)/version")
-			components.queryItems = [
-				URLQueryItem(name: "loaders", value: "[\"\(loader)\"]"),
-				URLQueryItem(name: "game_versions", value: "[\"\(version)\"]")
-			]
-			
-			var request = URLRequest(url: components.url!)
-			request.httpMethod = "GET"
-			
-			let (data, _) = try await URLSession.shared.data(for: request)
-			
-			return try JSONDecoder().decode([Version].self, from: data)
-		}
-		
-		private static func getVersion(for mod: Mod, _ loader: String, _ version: String) async throws -> [Version] {
-			try await getVersion(for: mod.id, loader, version)
 		}
 		
 		private static func updateCurseForge(_ mod: Mod, _ reloadCurseForge: Bool) async throws {
@@ -201,13 +279,13 @@ struct Modpack: AsyncParsableCommand {
 		private static func update(_ mod: Mod, _ loader: String, _ mcVersions: [String], _ skipConfirmation: Bool, _ showChangelog: Bool, dependency: Bool = false) async throws {
 			let dependencyLogModifier = dependency ? " dependency" : ""
 			
-			let project = try await Update.getProject(for: mod.id)
+			let project = try await Modpack.getProject(for: mod.id)
 			
 			logger.info("Fetching versions for\(dependencyLogModifier) \(project.title)...")
 			
 			var versions: [Version] = []
 			for mcVersion in mcVersions {
-				versions = try await Update.getVersion(for: mod, loader, mcVersion)
+				versions = try await Modpack.getVersion(for: mod, loader, mcVersion)
 				
 				guard versions.isEmpty else {
 					break
@@ -279,8 +357,8 @@ struct Modpack: AsyncParsableCommand {
 			
 			logger.info("Latest version installed successfully!")
 			
-			for dependency in latestVersion.dependencies ?? [] {
-				guard let projectId = dependency.project_id else {
+			for modDependency in latestVersion.dependencies ?? [] {
+				guard let projectId = modDependency.project_id else {
 					continue
 				}
 				
@@ -297,9 +375,9 @@ struct Modpack: AsyncParsableCommand {
 			
 			logger.info("Checking mod list for updates for Minecraft version(s) [\(config.versions.joined(separator: ", "))]")
 			
-			if !FileManager.default.fileExists(atPath: Update.modsURL.path) {
+			if !FileManager.default.fileExists(atPath: Modpack.modsURL.path) {
 				logger.debug("'mods' directory does not exist, creating...")
-				try FileManager.default.createDirectory(at: Update.modsURL, withIntermediateDirectories: true)
+				try FileManager.default.createDirectory(at: Modpack.modsURL, withIntermediateDirectories: true)
 			}
 			
 			for mod in config.mods {
