@@ -152,6 +152,7 @@ struct Modpack: AsyncParsableCommand {
 	
 	struct Report: AsyncParsableCommand {
 		struct ModReport {
+			let id: String
 			let name: String
 			let valid: Bool
 			let dependency: Bool
@@ -165,29 +166,6 @@ struct Modpack: AsyncParsableCommand {
 		@Argument(help: "Minecraft version to check compatibility with.")
 		var version: String
 		
-		private static func report(_ mod: Mod, _ loader: String, _ version: String, dependency: Bool = false) async throws -> [ModReport] {
-			let project = try await Modpack.getProject(for: mod.id)
-			let versions = try await Modpack.getVersion(for: mod, loader, version)
-			
-			guard let validVersion = versions.first else {
-				return [ModReport(name: project.title, valid: false, dependency: dependency)]
-			}
-			
-			var modReport = [ModReport(name: project.title, valid: true, dependency: dependency)]
-			for modDependency in validVersion.dependencies ?? [] {
-				guard let projectId = modDependency.project_id else {
-					continue
-				}
-				
-				let dependencyMod = Mod(name: "dependency", id: projectId, url: nil)
-				let dependencyReports = try await report(dependencyMod, loader, version, dependency: true)
-				
-				modReport.append(contentsOf: dependencyReports)
-			}
-			
-			return modReport
-		}
-		
 		func validate() throws {
 			let configFileURL = URL(fileURLWithPath: configPath)
 			
@@ -200,7 +178,32 @@ struct Modpack: AsyncParsableCommand {
 			}
 		}
 		
-		private static let modsURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appendingPathComponent("mods")
+		private static func report(_ mod: Mod, _ loader: String, _ version: String, checkedMods: [String], dependency: Bool = false) async throws -> [ModReport] {
+			if checkedMods.contains(mod.id) {
+				return []
+			}
+			
+			let project = try await Modpack.getProject(for: mod.id)
+			let versions = try await Modpack.getVersion(for: mod, loader, version)
+			
+			guard let validVersion = versions.first else {
+				return [ModReport(id: mod.id, name: project.title, valid: false, dependency: dependency)]
+			}
+			
+			var modReport = [ModReport(id: mod.id, name: project.title, valid: true, dependency: dependency)]
+			for modDependency in validVersion.dependencies ?? [] {
+				guard let projectId = modDependency.project_id else {
+					continue
+				}
+				
+				let dependencyMod = Mod(name: "dependency", id: projectId, url: nil)
+				let dependencyReports = try await report(dependencyMod, loader, version, checkedMods: checkedMods + [mod.id], dependency: true)
+				
+				modReport.append(contentsOf: dependencyReports)
+			}
+			
+			return modReport
+		}
 		
 		mutating func run() async throws {
 			logger.logLevel = .info
@@ -212,7 +215,7 @@ struct Modpack: AsyncParsableCommand {
 			
 			var modReports: [ModReport] = []
 			for mod in config.mods where mod.url == nil {
-				let modReport = try await Report.report(mod, config.loader, version)
+				let modReport = try await Report.report(mod, config.loader, version, checkedMods: modReports.map({ $0.id }))
 				modReports.append(contentsOf: modReport)
 			}
 			
