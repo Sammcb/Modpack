@@ -96,6 +96,7 @@ struct Version: Codable {
 	struct File: Codable {
 		let url: String
 		let filename: String
+		let primary: Bool
 	}
 	
 	let version_number: String
@@ -297,8 +298,7 @@ struct Modpack: AsyncParsableCommand {
 				logger.notice("No versions of\(dependencyLogModifier) \(project.title) found for Minecraft \(mcVersion)")
 			}
 			
-			
-			guard let latestVersion = versions.first, let file = latestVersion.files.first else {
+			guard let latestVersion = versions.first, let file = latestVersion.files.filter({ $0.primary }).first else {
 				return
 			}
 			
