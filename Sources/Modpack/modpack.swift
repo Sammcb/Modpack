@@ -314,7 +314,7 @@ struct Modpack: AsyncParsableCommand {
 			var currentFilePath: String?
 			for version in versions {
 				
-				guard let versionFile = version.files.first else {
+				guard let versionFile = version.files.filter({ $0.primary }).first else {
 					continue
 				}
 				
