@@ -5,8 +5,8 @@ let package = Package(
 	name: "Modpack",
 	platforms: [.macOS(.v12)],
 	dependencies: [
-		.package(url: "https://github.com/apple/swift-argument-parser", from: "1.1.2"),
-		.package(url: "https://github.com/apple/swift-log.git", from: "1.4.2")
+		.package(url: "https://github.com/apple/swift-argument-parser", from: "1.1.3"),
+		.package(url: "https://github.com/apple/swift-log.git", from: "1.4.4"),
 	],
 	targets: [
 		.executableTarget(
