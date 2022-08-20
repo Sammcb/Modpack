@@ -105,11 +105,23 @@ struct Version: Codable {
 	let files: [File]
 }
 
+struct ResponseError: Codable {
+	let error: String
+	let description: String
+}
+
+enum ModpackError: Error {
+	case responseHeaders
+	case api(_ error: String)
+}
+
 @main
 struct Modpack: AsyncParsableCommand {
-	static var configuration = CommandConfiguration(abstract: "A utility for managing modpacks.", version: "2.0.0", subcommands: [Update.self, Report.self])
+	static var configuration = CommandConfiguration(abstract: "A utility for managing modpacks.", version: "2.1.0", subcommands: [Update.self, Report.self])
 	
 	private static let modsURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appendingPathComponent("mods")
+	
+	private static let userAgent = "github.com/Sammcb/Modpack/2.1.0 (sammcb.com)"
 	
 	private static var baseURLComponents: URLComponents {
 		var components = URLComponents()
@@ -119,14 +131,53 @@ struct Modpack: AsyncParsableCommand {
 		return components
 	}
 	
+	private static func avoidRateLimit(using response: HTTPURLResponse) async throws {
+		guard let requestsRemainingString = response.value(forHTTPHeaderField: "x-ratelimit-remaining") else {
+			return
+		}
+		
+		guard let requestsRemaining = Int(requestsRemainingString), requestsRemaining < 3 else {
+			return
+		}
+		
+		guard let timeRemainingString = response.value(forHTTPHeaderField: "x-ratelimit-reset") else {
+			return
+		}
+		
+		guard let timeRemaining = UInt64(timeRemainingString) else {
+			return
+		}
+		
+		let buffer: UInt64 = 1
+		
+		let waitTime = timeRemaining + buffer
+		
+		logger.notice("Request limit reached. Waiting \(waitTime)s for limit reset...")
+		try await Task.sleep(nanoseconds: 1000000000 * waitTime)
+	}
+	
 	private static func getProject(for id: String) async throws -> Project {
 		var components = Modpack.baseURLComponents
 		components.path.append("\(id)")
 		
 		var request = URLRequest(url: components.url!)
 		request.httpMethod = "GET"
+		request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 		
-		let (data, _) = try await URLSession.shared.data(for: request)
+		let (data, response) = try await URLSession.shared.data(for: request)
+		
+		guard let response = response as? HTTPURLResponse else {
+			throw ModpackError.responseHeaders
+		}
+		
+		let error = try? JSONDecoder().decode(ResponseError.self, from: data)
+		
+		if let error = error {
+			logger.error("\(error.description)")
+			throw ModpackError.api(error.error)
+		}
+		
+		try await avoidRateLimit(using: response)
 		
 		return try JSONDecoder().decode(Project.self, from: data)
 	}
@@ -141,8 +192,22 @@ struct Modpack: AsyncParsableCommand {
 		
 		var request = URLRequest(url: components.url!)
 		request.httpMethod = "GET"
+		request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 		
-		let (data, _) = try await URLSession.shared.data(for: request)
+		let (data, response) = try await URLSession.shared.data(for: request)
+		
+		guard let response = response as? HTTPURLResponse else {
+			throw ModpackError.responseHeaders
+		}
+		
+		let error = try? JSONDecoder().decode(ResponseError.self, from: data)
+		
+		if let error = error {
+			logger.error("\(error.description)")
+			throw ModpackError.api(error.error)
+		}
+		
+		try await avoidRateLimit(using: response)
 		
 		return try JSONDecoder().decode([Version].self, from: data)
 	}
