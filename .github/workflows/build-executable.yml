@@ -13,7 +13,7 @@ jobs:
     - name: Build executable
       run: |
         swift build -c release
-        ls -a
+        ls -a .build
     - name: Archive executable
       uses: actions/upload-artifact@v3
       with:
