@@ -12,10 +12,9 @@ jobs:
       uses: actions/checkout@v3
     - name: Build executable
       run: |
-        swift build -c release
-        ls -a .build
+        swift build -c release --arch arm64 --arch x86_64
     - name: Archive executable
       uses: actions/upload-artifact@v3
       with:
         name: Modpack
-        path: .build/arm64-apple-macosx/release/Modpack
+        path: .build/apple/Products/Release/Modpack
