@@ -117,7 +117,7 @@ enum ModpackError: Error {
 
 @main
 struct Modpack: AsyncParsableCommand {
-	static var configuration = CommandConfiguration(abstract: "A utility for managing modpacks.", version: "2.1.0", subcommands: [Update.self, Report.self])
+	static var configuration = CommandConfiguration(abstract: "A utility for managing modpacks.", version: "2.1.1", subcommands: [Update.self, Report.self])
 	
 	private static let modsURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appendingPathComponent("mods")
 	
