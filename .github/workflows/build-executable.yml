@@ -1,4 +1,4 @@
-name: Swift
+name: Build executable
 
 on:
   release:
@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-12
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
