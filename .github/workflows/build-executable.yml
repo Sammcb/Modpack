@@ -3,6 +3,8 @@ name: Build executable
 on:
   release:
     types: [published]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
