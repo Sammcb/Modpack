@@ -7,7 +7,7 @@ struct Mod: Codable {
 }
 
 struct Config: Codable {
-	let loader: String
+	let loaders: [String]
 	let versions: [String]
 	let mods: [Mod]
 }
