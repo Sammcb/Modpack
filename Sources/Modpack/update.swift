@@ -50,7 +50,7 @@ extension Modpack {
 			try FileManager.default.moveItem(at: downloadURL, to: saveURL)
 		}
 		
-		private func update(_ mod: Mod, _ loader: String, _ mcVersions: [String], _ skipConfirmation: Bool, _ showChangelog: Bool, dependency: Bool = false) async throws {
+		private func update(_ mod: Mod, _ loaders: [String], _ mcVersions: [String], _ skipConfirmation: Bool, _ showChangelog: Bool, dependency: Bool = false) async throws {
 			let dependencyLogModifier = dependency ? " dependency" : ""
 			
 			let project = try await getProject(for: mod.id)
@@ -58,14 +58,15 @@ extension Modpack {
 			logger.info("Fetching versions for\(dependencyLogModifier) \(project.title)...")
 			
 			var versions: [Version] = []
-			for mcVersion in mcVersions {
-				versions = try await getVersion(for: mod, loader, mcVersion)
-				
-				guard versions.isEmpty else {
-					break
+			for loader in loaders {
+				for mcVersion in mcVersions {
+					let fetchedVersions = try await getVersion(for: mod, loader, mcVersion)
+					versions.append(contentsOf: fetchedVersions)
+					
+					if fetchedVersions.isEmpty && versions.isEmpty {
+						logger.notice("No versions of\(dependencyLogModifier) \(project.title) found for Minecraft \(mcVersion) on \(loader)")
+					}
 				}
-				
-				logger.notice("No versions of\(dependencyLogModifier) \(project.title) found for Minecraft \(mcVersion)")
 			}
 			
 			guard let latestVersion = versions.first, let file = latestVersion.files.filter({ $0.primary }).first else {
@@ -136,7 +137,7 @@ extension Modpack {
 				}
 				
 				let dependencyMod = Mod(name: "dependency", id: projectId, url: nil)
-				try await update(dependencyMod, loader, mcVersions, skipConfirmation, showChangelog, dependency: true)
+				try await update(dependencyMod, loaders, mcVersions, skipConfirmation, showChangelog, dependency: true)
 			}
 		}
 		
@@ -155,7 +156,7 @@ extension Modpack {
 			
 			for mod in config.mods {
 				if mod.url == nil {
-					try await update(mod, config.loader, config.versions, skipConfirmation, showChangelog, dependency: false)
+					try await update(mod, config.loaders, config.versions, skipConfirmation, showChangelog, dependency: false)
 				} else {
 					try await updateCurseForge(mod, reloadCurseForge)
 				}

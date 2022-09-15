@@ -3,10 +3,15 @@ name: Build executable
 on:
   release:
     types: [published]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-12
+    runs-on: ubuntu-latest
+    container:
+      image: swift:latest
+      
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3

@@ -30,13 +30,22 @@ extension Modpack {
 			}
 		}
 		
-		private func report(_ mod: Mod, _ loader: String, _ version: String, checkedMods: [String], dependency: Bool = false) async throws -> [ModReport] {
+		private func report(_ mod: Mod, _ loaders: [String], _ version: String, checkedMods: [String], dependency: Bool = false) async throws -> [ModReport] {
 			if checkedMods.contains(mod.id) {
 				return []
 			}
 			
 			let project = try await getProject(for: mod.id)
-			let versions = try await getVersion(for: mod, loader, version)
+			
+			var versions: [Version] = []
+			for loader in loaders {
+				versions = try await getVersion(for: mod, loader, version)
+				
+				guard versions.isEmpty else {
+					break
+				}
+			}
+			
 			
 			guard let validVersion = versions.first else {
 				return [ModReport(id: mod.id, name: project.title, valid: false, dependency: dependency)]
@@ -49,7 +58,7 @@ extension Modpack {
 				}
 				
 				let dependencyMod = Mod(name: "dependency", id: projectId, url: nil)
-				let dependencyReports = try await report(dependencyMod, loader, version, checkedMods: checkedMods + [mod.id], dependency: true)
+				let dependencyReports = try await report(dependencyMod, loaders, version, checkedMods: checkedMods + [mod.id], dependency: true)
 				
 				modReport.append(contentsOf: dependencyReports)
 			}
@@ -67,7 +76,7 @@ extension Modpack {
 			
 			var modReports: [ModReport] = []
 			for mod in config.mods where mod.url == nil {
-				let modReport = try await report(mod, config.loader, version, checkedMods: modReports.map({ $0.id }))
+				let modReport = try await report(mod, config.loaders, version, checkedMods: modReports.map({ $0.id }))
 				modReports.append(contentsOf: modReport)
 			}
 			
