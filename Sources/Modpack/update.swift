@@ -116,7 +116,7 @@ extension Modpack {
 				}
 			}
 			
-			if let currentFilePath = currentFilePath {
+			if let currentFilePath {
 				logger.info("Removing old version...")
 				try FileManager.default.removeItem(atPath: currentFilePath)
 			}
