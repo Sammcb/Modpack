@@ -39,12 +39,18 @@ struct Version: Codable {
 	let changelog: String?
 	let dependencies: [Dependency]?
 	let files: [File]
+	let loaders: [String]
+	let gameVersions: [String]
+	let datePublished: Date
 	
 	enum CodingKeys: String, CodingKey {
 		case versionNumber = "version_number"
+		case gameVersions = "game_versions"
+		case datePublished = "date_published"
 		case changelog
 		case dependencies
 		case files
+		case loaders
 	}
 }
 

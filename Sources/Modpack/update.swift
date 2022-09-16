@@ -57,17 +57,8 @@ extension Modpack {
 			
 			logger.info("Fetching versions for\(dependencyLogModifier) \(project.title)...")
 			
-			var versions: [Version] = []
-			for loader in loaders {
-				for mcVersion in mcVersions {
-					let fetchedVersions = try await getVersion(for: mod, loader, mcVersion)
-					versions.append(contentsOf: fetchedVersions)
-					
-					if fetchedVersions.isEmpty && versions.isEmpty {
-						logger.notice("No versions of\(dependencyLogModifier) \(project.title) found for Minecraft \(mcVersion) on \(loader)")
-					}
-				}
-			}
+			let fetchedVersions = try await getVersions(for: mod, loaders, mcVersions)
+			let versions = sort(project: project, versions: fetchedVersions, loaders: loaders, mcVersions: mcVersions, dependencyLogModifier)
 			
 			guard let latestVersion = versions.first, let file = latestVersion.files.filter({ $0.primary }).first else {
 				return
