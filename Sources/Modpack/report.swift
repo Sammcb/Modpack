@@ -3,7 +3,7 @@ import ArgumentParser
 
 extension Modpack {
 	struct Report: AsyncParsableCommand, ApiActor {
-		struct ModReport {
+		private struct ModReport {
 			let id: String
 			let name: String
 			let valid: Bool
