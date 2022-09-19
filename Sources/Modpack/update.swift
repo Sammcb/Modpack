@@ -57,8 +57,7 @@ extension Modpack {
 			
 			logger.info("Fetching versions for\(dependencyLogModifier) \(project.title)...")
 			
-			let fetchedVersions = try await getVersions(for: mod, loaders, mcVersions)
-			let versions = sort(project: project, versions: fetchedVersions, loaders: loaders, mcVersions: mcVersions, dependencyLogModifier)
+			let versions = try await getVersions(for: mod, project: project, loaders: loaders, mcVersions: mcVersions, dependencyLogModifier: dependencyLogModifier)
 			
 			guard let latestVersion = versions.first, let file = latestVersion.files.filter({ $0.primary }).first else {
 				return

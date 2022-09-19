@@ -48,9 +48,7 @@ protocol ApiActor {
 	var baseURLComponents: URLComponents { get }
 	func avoidRateLimit(using response: HTTPURLResponse) async throws
 	func getProject(for id: String) async throws -> Project
-	func getVersions(for projectId: String, _ loaders: [String], _ versions: [String]) async throws -> [Version]
-	func getVersions(for mod: Mod, _ loaders: [String], _ versions: [String]) async throws -> [Version]
-	func sort(project: Project, versions: [Version], loaders: [String], mcVersions: [String], _ dependencyLogModifier: String) -> [Version]
+	func getVersions(for mod: Mod, project: Project, loaders: [String], mcVersions: [String], dependencyLogModifier: String) async throws -> [Version]
 }
 
 extension ApiActor {
@@ -125,7 +123,7 @@ extension ApiActor {
 		return try decoder.decode(Project.self, from: data)
 	}
 	
-	func getVersions(for projectId: String, _ loaders: [String], _ versions: [String]) async throws -> [Version] {
+	private func getVersions(for projectId: String, _ loaders: [String], _ versions: [String]) async throws -> [Version] {
 		var components = baseURLComponents
 		components.path.append("\(projectId)/version")
 		components.queryItems = [
@@ -155,15 +153,11 @@ extension ApiActor {
 		return try decoder.decode([Version].self, from: data)
 	}
 	
-	func getVersions(for mod: Mod, _ loaders: [String], _ versions: [String]) async throws -> [Version] {
-		try await getVersions(for: mod.id, loaders, versions)
-	}
-	
 	private func match(_ version: Version, loader: String, mcVersion: String) -> Bool {
 		version.loaders.contains(loader) && version.gameVersions.contains(mcVersion)
 	}
 	
-	func sort(project: Project, versions: [Version], loaders: [String], mcVersions: [String], _ dependencyLogModifier: String = "") -> [Version] {
+	private func sort(project: Project, versions: [Version], loaders: [String], mcVersions: [String], _ dependencyLogModifier: String = "") -> [Version] {
 		var versionsToCheck = versions
 		var sortedVersions: [Version] = []
 		for loader in loaders {
@@ -181,5 +175,10 @@ extension ApiActor {
 		}
 		
 		return sortedVersions
+	}
+	
+	func getVersions(for mod: Mod, project: Project, loaders: [String], mcVersions: [String], dependencyLogModifier: String) async throws -> [Version] {
+		let versions = try await getVersions(for: mod.id, loaders, mcVersions)
+		return sort(project: project, versions: versions, loaders: loaders, mcVersions: mcVersions, dependencyLogModifier)
 	}
 }

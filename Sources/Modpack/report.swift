@@ -35,9 +35,10 @@ extension Modpack {
 				return []
 			}
 			
+			let dependencyLogModifier = dependency ? " dependency" : ""
+			
 			let project = try await getProject(for: mod.id)
-			let fetchedVersions = try await getVersions(for: mod, loaders, mcVersions)
-			let versions = sort(project: project, versions: fetchedVersions, loaders: loaders, mcVersions: mcVersions)
+			let versions = try await getVersions(for: mod, project: project, loaders: loaders, mcVersions: mcVersions, dependencyLogModifier: dependencyLogModifier)
 			
 			guard let validVersion = versions.first else {
 				return [ModReport(id: mod.id, name: project.title, valid: false, dependency: dependency)]
