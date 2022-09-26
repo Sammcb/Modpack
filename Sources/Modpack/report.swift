@@ -45,7 +45,7 @@ extension Modpack {
 			}
 			
 			var modReport = [ModReport(id: mod.id, name: project.title, valid: true, dependency: dependency)]
-			for modDependency in validVersion.dependencies ?? [] {
+			for modDependency in validVersion.dependencies?.filter({ $0.dependencyType == .required }) ?? [] {
 				guard let projectId = modDependency.projectId else {
 					continue
 				}

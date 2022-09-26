@@ -18,9 +18,16 @@ struct Project: Codable {
 
 struct Version: Codable {
 	struct Dependency: Codable {
+		enum DependencyType: String, Codable {
+			case required
+			case optional
+			case incompatible
+			case embedded
+		}
+		
 		let versionId: String?
 		let projectId: String?
-		let dependencyType: String
+		let dependencyType: DependencyType
 		
 		enum CodingKeys: String, CodingKey {
 			case versionId = "version_id"

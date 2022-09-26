@@ -121,7 +121,7 @@ extension Modpack {
 			
 			logger.info("Latest version installed successfully!")
 			
-			for modDependency in latestVersion.dependencies ?? [] {
+			for modDependency in latestVersion.dependencies?.filter({ $0.dependencyType == .required }) ?? [] {
 				guard let projectId = modDependency.projectId else {
 					continue
 				}
