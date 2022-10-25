@@ -57,17 +57,7 @@ extension Modpack {
 			
 			logger.info("Fetching versions for\(dependencyLogModifier) \(project.title)...")
 			
-			var versions: [Version] = []
-			for loader in loaders {
-				for mcVersion in mcVersions {
-					let fetchedVersions = try await getVersion(for: mod, loader, mcVersion)
-					versions.append(contentsOf: fetchedVersions)
-					
-					if fetchedVersions.isEmpty && versions.isEmpty {
-						logger.notice("No versions of\(dependencyLogModifier) \(project.title) found for Minecraft \(mcVersion) on \(loader)")
-					}
-				}
-			}
+			let versions = try await getVersions(for: mod, project: project, loaders: loaders, mcVersions: mcVersions, dependencyLogModifier: dependencyLogModifier)
 			
 			guard let latestVersion = versions.first, let file = latestVersion.files.filter({ $0.primary }).first else {
 				return
@@ -116,7 +106,7 @@ extension Modpack {
 				}
 			}
 			
-			if let currentFilePath = currentFilePath {
+			if let currentFilePath {
 				logger.info("Removing old version...")
 				try FileManager.default.removeItem(atPath: currentFilePath)
 			}
@@ -131,7 +121,7 @@ extension Modpack {
 			
 			logger.info("Latest version installed successfully!")
 			
-			for modDependency in latestVersion.dependencies ?? [] {
+			for modDependency in latestVersion.dependencies?.filter({ $0.dependencyType == .required }) ?? [] {
 				guard let projectId = modDependency.projectId else {
 					continue
 				}
