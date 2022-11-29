@@ -41,7 +41,6 @@ extension Modpack {
 			let project = try await getProject(for: mod.id)
 			
 			if ignoreMods.contains(where: { $0.id == mod.id }) {
-				logger.debug("Ignoring\(dependencyLogModifier) \(project.title)...")
 				return [ModReport(id: mod.id, name: project.title, valid: false, dependency: dependency, ignore: true)]
 			}
 			
