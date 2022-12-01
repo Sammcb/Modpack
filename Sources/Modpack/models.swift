@@ -10,6 +10,7 @@ struct Config: Codable {
 	let loaders: [String]
 	let versions: [String]
 	let mods: [Mod]
+	let ignore: [Mod]
 }
 
 struct Project: Codable {
