@@ -41,14 +41,15 @@ struct ApiConfig {
 	private init() {}
 	
 	static let userAgent = "github.com/Sammcb/Modpack/2.1.0 (sammcb.com)"
-	static let modsURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appendingPathComponent("mods")
+	static let modsURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appending(path: "mods")
+	static let datapacksURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appending(path: "datapacks")
 }
 
 protocol ApiActor {
 	var baseURLComponents: URLComponents { get }
 	func avoidRateLimit(using response: HTTPURLResponse) async throws
 	func getProject(for id: String) async throws -> Project
-	func getVersions(for mod: Mod, project: Project, loaders: [String], mcVersions: [String], dependencyLogModifier: String) async throws -> [Version]
+	func getVersions(for project: Project, loaders: [String], mcVersions: [String], dependencyLogModifier: String) async throws -> [Version]
 }
 
 extension ApiActor {
@@ -90,7 +91,6 @@ extension ApiActor {
 		}
 		
 		let buffer: UInt64 = 1
-		
 		let waitTime = timeRemaining + buffer
 		
 		logger.notice("Request limit reached. Waiting \(waitTime)s for limit reset...")
@@ -177,8 +177,8 @@ extension ApiActor {
 		return sortedVersions
 	}
 	
-	func getVersions(for mod: Mod, project: Project, loaders: [String], mcVersions: [String], dependencyLogModifier: String) async throws -> [Version] {
-		let versions = try await getVersions(for: mod.id, loaders, mcVersions)
+	func getVersions(for project: Project, loaders: [String], mcVersions: [String], dependencyLogModifier: String) async throws -> [Version] {
+		let versions = try await getVersions(for: project.id, loaders, mcVersions)
 		return sort(project: project, versions: versions, loaders: loaders, mcVersions: mcVersions, dependencyLogModifier)
 	}
 }

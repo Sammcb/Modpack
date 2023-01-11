@@ -1,20 +1,21 @@
 import Foundation
 
-struct Mod: Codable {
-	let name: String
-	let id: String
-	let url: String?
-}
-
 struct Config: Codable {
+	struct Project: Codable {
+		let name: String
+		let id: String
+	}
+	
 	let loaders: [String]
 	let versions: [String]
-	let mods: [Mod]
-	let ignore: [Mod]
+	let mods: [Config.Project]
+	let ignore: [Config.Project]
+	let datapacks: [Config.Project]
 }
 
 struct Project: Codable {
 	let title: String
+	let id: String
 }
 
 struct Version: Codable {
