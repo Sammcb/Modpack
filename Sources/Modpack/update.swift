@@ -70,7 +70,7 @@ extension Modpack {
 			
 			logger.info("Fetching versions for\(dependencyLogModifier) \(project.title)...")
 			
-			let versions = try await getVersions(for: project, loaders: loaders, mcVersions: mcVersions, dependencyLogModifier: dependencyLogModifier)
+			let versions = try await getVersions(for: project, loaders: loaders, mcVersions: mcVersions)
 			
 			guard let latestVersion = versions.first else {
 				return
@@ -82,14 +82,21 @@ extension Modpack {
 				return
 			}
 			
-			let isDatapack = loaders.contains("datapack")
-			let baseURL = isDatapack ? ApiConfig.datapacksURL : ApiConfig.modsURL
+			let type = projectType(with: loaders)
+			let baseURL: URL
+			if type == .datapack {
+				baseURL = ApiConfig.datapacksURL
+			} else if type == .resourcepack {
+				baseURL = ApiConfig.resourcepacksURL
+			} else {
+				baseURL = ApiConfig.modsURL
+			}
 			
 			let saveURL = baseURL.appendingPathComponent(file.filename)
 			
-			let checkSaveURL = isDatapack ? saveURL.deletingPathExtension() : saveURL
+			let checkSaveURL = type == .mod ? saveURL : saveURL.deletingPathExtension()
 			if FileManager.default.fileExists(atPath: checkSaveURL.path(percentEncoded: false)) {
-				logger.debug("Lastest version of\(dependencyLogModifier) \(project.title) already exists...")
+				logger.debug("\tLastest version already exists...")
 				return
 			}
 			
@@ -102,7 +109,7 @@ extension Modpack {
 				}
 				
 				var checkFileURL = baseURL.appendingPathComponent(versionFile.filename)
-				if isDatapack {
+				if type != .mod {
 					checkFileURL.deletePathExtension()
 				}
 				if FileManager.default.fileExists(atPath: checkFileURL.path(percentEncoded: false)) {
@@ -144,7 +151,7 @@ extension Modpack {
 			
 			try FileManager.default.moveItem(at: downloadURL, to: saveURL)
 			
-			if isDatapack {
+			if type != .mod {
 				try unzip(at: saveURL)
 			} else {
 				logger.info("Latest version installed successfully!")
@@ -169,7 +176,7 @@ extension Modpack {
 			let versionsString = "[\(config.versions.joined(separator: ", "))]"
 			logger.info("Checking projects for updates for Minecraft version(s) \(versionsString)")
 			
-			for url in [ApiConfig.modsURL, ApiConfig.datapacksURL] {
+			for url in [ApiConfig.modsURL, ApiConfig.datapacksURL, ApiConfig.resourcepacksURL] {
 				if FileManager.default.fileExists(atPath: url.path()) {
 					continue
 				}
@@ -186,6 +193,11 @@ extension Modpack {
 			logger.info("Checking datapacks for \(versionsString)...")
 			for datapack in config.datapacks {
 				try await update(datapack, ["datapack"], config.versions, config.ignore, skipConfirmation, showChangelog)
+			}
+			
+			logger.info("Checking resourcepacks for \(versionsString)...")
+			for resourcepack in config.resourcepacks {
+				try await update(resourcepack, ["minecraft"], config.versions, config.ignore, skipConfirmation, showChangelog)
 			}
 		}
 	}

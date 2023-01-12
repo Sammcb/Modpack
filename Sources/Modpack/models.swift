@@ -11,6 +11,7 @@ struct Config: Codable {
 	let mods: [Config.Project]
 	let ignore: [Config.Project]
 	let datapacks: [Config.Project]
+	let resourcepacks: [Config.Project]
 }
 
 struct Project: Codable {
@@ -71,4 +72,12 @@ struct ResponseError: Codable {
 enum ModpackError: Error {
 	case responseHeaders
 	case api(_ error: String)
+}
+
+enum ProjectType: String, Identifiable, CaseIterable {
+	case mod
+	case datapack
+	case resourcepack
+	
+	var id: String { rawValue }
 }

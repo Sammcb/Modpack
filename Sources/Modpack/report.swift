@@ -7,7 +7,7 @@ extension Modpack {
 			let id: String
 			let name: String
 			let valid: Bool
-			let datapack: Bool
+			let projectType: ProjectType
 			let dependency: Bool
 			var ignore: Bool = false
 		}
@@ -38,21 +38,20 @@ extension Modpack {
 			}
 			
 			if ignoreProjects.contains(where: { $0.id == configProject.id }) {
-				return [ProjectReport(id: configProject.id, name: "", valid: false, datapack: false, dependency: false, ignore: true)]
+				return [ProjectReport(id: configProject.id, name: "", valid: false, projectType: .mod, dependency: false, ignore: true)]
 			}
-			
-			let dependencyLogModifier = dependency ? " dependency" : ""
-			let isDatapack = loaders.contains("datapack")
 			
 			let project = try await getProject(for: configProject.id)
 			
-			let versions = try await getVersions(for: project, loaders: loaders, mcVersions: mcVersions, dependencyLogModifier: dependencyLogModifier)
+			let versions = try await getVersions(for: project, loaders: loaders, mcVersions: mcVersions)
+			
+			let type = projectType(with: loaders)
 			
 			guard let validVersion = versions.first else {
-				return [ProjectReport(id: project.id, name: project.title, valid: false, datapack: isDatapack, dependency: dependency)]
+				return [ProjectReport(id: project.id, name: project.title, valid: false, projectType: type, dependency: dependency)]
 			}
 			
-			let projectReport = ProjectReport(id: project.id, name: project.title, valid: true, datapack: isDatapack, dependency: dependency)
+			let projectReport = ProjectReport(id: project.id, name: project.title, valid: true, projectType: type, dependency: dependency)
 			var projectReports = [projectReport]
 			for projectDependency in validVersion.dependencies?.filter({ $0.dependencyType == .required }) ?? [] {
 				guard let projectId = projectDependency.projectId else {
@@ -89,29 +88,46 @@ extension Modpack {
 				projectReports.append(contentsOf: datapackReport)
 			}
 			
+			for resourcepack in config.resourcepacks {
+				let resourcepackReport = try await report(resourcepack, ["minecraft"], versions, config.ignore, checkedMods: projectReports)
+				projectReports.append(contentsOf: resourcepackReport)
+			}
+			
 			projectReports.removeAll(where: { $0.ignore })
-			let modReadyCount = projectReports.filter({ $0.valid && !$0.datapack }).count
-			logger.info("Mods (total)")
-			logger.info("[\(modReadyCount)/\(projectReports.filter({ !$0.datapack }).count)] support \(versionsString)\n")
 			
-			let invalidMods = projectReports.filter({ !$0.valid && !$0.datapack }).map({ $0.name })
-			if !invalidMods.isEmpty {
-				logger.notice("Mods not compatible:\n\(invalidMods.joined(separator: "\n"))\n")
+			for type in ProjectType.allCases {
+				let filteredReports = projectReports.filter({ $0.projectType == type })
+				
+				if filteredReports.isEmpty {
+					continue
+				}
+				
+				let readyCount = filteredReports.filter({ $0.valid }).count
+				let typeString = "\(type.rawValue.capitalized)s"
+				logger.info("\(typeString) (total)")
+				logger.info("[\(readyCount)/\(filteredReports.count)] support \(versionsString)\n")
+				
+				let invalidProjects = filteredReports.filter({ !$0.valid }).map({ $0.name })
+				if !invalidProjects.isEmpty {
+					logger.notice("\(typeString) not compatible:\n\(invalidProjects.joined(separator: "\n"))\n")
+				}
+				
+				let dependencyReports = filteredReports.filter({ $0.dependency })
+				let dependencyReadyCount = dependencyReports.filter({ $0.valid }).count
+				let dependencyCount = dependencyReports.count
+				
+				guard dependencyCount > 0 else {
+					continue
+				}
+				
+				logger.info("\(typeString) (dependencies)")
+				logger.info("[\(dependencyReadyCount)/\(dependencyCount)] support \(versionsString)\n")
 			}
 			
-			let dependencyReadyCount = projectReports.filter({ $0.valid && $0.dependency }).count
-			let dependencyCount = projectReports.filter({ $0.dependency }).count
-			logger.info("Mods (dependencies)")
-			logger.info("[\(dependencyReadyCount)/\(dependencyCount)] support \(versionsString)\n")
+			let readyCount = projectReports.filter({ $0.valid }).count
 			
-			let datapackReadyCount = projectReports.filter({$0.valid && $0.datapack }).count
-			logger.info("Datapacks")
-			logger.info("[\(datapackReadyCount)/\(projectReports.filter({ $0.datapack }).count)] support \(versionsString)\n")
-			
-			let invalidDatapacks = projectReports.filter({ !$0.valid && $0.datapack }).map({ $0.name })
-			if !invalidDatapacks.isEmpty {
-				logger.notice("Datapacks not compatible:\n\(invalidDatapacks.joined(separator: "\n"))\n")
-			}
+			logger.info("Total")
+			logger.info("[\(readyCount)/\(projectReports.count)] support \(versionsString)")
 		}
 	}
 }
