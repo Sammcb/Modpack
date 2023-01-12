@@ -58,7 +58,7 @@ extension Modpack {
 					continue
 				}
 				
-				let dependencyProject = Config.Project(name: "", id: projectId)
+				let dependencyProject = Config.Project(id: projectId)
 				let dependencyReports = try await report(dependencyProject, loaders, mcVersions, ignoreProjects, checkedMods: checkedMods + [projectReport], dependency: true)
 				
 				projectReports.append(contentsOf: dependencyReports)

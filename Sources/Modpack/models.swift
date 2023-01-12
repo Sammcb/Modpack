@@ -2,7 +2,6 @@ import Foundation
 
 struct Config: Codable {
 	struct Project: Codable {
-		let name: String
 		let id: String
 	}
 	

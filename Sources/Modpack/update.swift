@@ -162,7 +162,7 @@ extension Modpack {
 					continue
 				}
 				
-				let dependencyMod = Config.Project(name: "", id: projectId)
+				let dependencyMod = Config.Project(id: projectId)
 				try await update(dependencyMod, loaders, mcVersions, ignoreMods, skipConfirmation, showChangelog, dependency: true)
 			}
 		}
