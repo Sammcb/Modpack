@@ -174,7 +174,7 @@ extension Modpack {
 			let config = try JSONDecoder().decode(Config.self, from: configData)
 			
 			let versionsString = "[\(config.versions.joined(separator: ", "))]"
-			logger.info("Checking projects for updates for Minecraft version(s) \(versionsString)")
+			logger.info("Checking projects for updates for Minecraft version(s) \(versionsString)\n")
 			
 			for url in [ApiConfig.modsURL, ApiConfig.datapacksURL, ApiConfig.resourcepacksURL] {
 				if FileManager.default.fileExists(atPath: url.path()) {
@@ -190,10 +190,14 @@ extension Modpack {
 				try await update(mod, config.loaders, config.versions, config.ignore, skipConfirmation, showChangelog)
 			}
 			
+			logger.info("")
+			
 			logger.info("Checking datapacks for \(versionsString)...")
 			for datapack in config.datapacks {
 				try await update(datapack, ["datapack"], config.versions, config.ignore, skipConfirmation, showChangelog)
 			}
+			
+			logger.info("")
 			
 			logger.info("Checking resourcepacks for \(versionsString)...")
 			for resourcepack in config.resourcepacks {
