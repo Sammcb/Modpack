@@ -1,16 +1,35 @@
 import Foundation
 
 struct Config: Codable {
+	enum Directory: String, Identifiable, CaseIterable {
+		case mods
+		case datapacks
+		case resourcepacks
+		
+		var id: String { rawValue }
+	}
+	
 	struct Project: Codable {
 		let id: String
 	}
 	
 	let loaders: [String]
 	let versions: [String]
+	private let modsDirectory: String
 	let mods: [Config.Project]
 	let ignore: [Config.Project]
+	private let datapacksDirectory: String
 	let datapacks: [Config.Project]
+	private let resourcepacksDirectory: String
 	let resourcepacks: [Config.Project]
+	
+	var directories: [Directory: URL] {
+		[
+			.mods: ApiConfig.baseURL.appending(path: modsDirectory, directoryHint: .isDirectory),
+			.datapacks: ApiConfig.baseURL.appending(path: datapacksDirectory, directoryHint: .isDirectory),
+			.resourcepacks: ApiConfig.baseURL.appending(path: resourcepacksDirectory, directoryHint: .isDirectory)
+		]
+	}
 }
 
 struct Project: Codable {

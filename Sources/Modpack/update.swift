@@ -58,7 +58,7 @@ extension Modpack {
 			}
 		}
 		
-		private func update(_ configProject: Config.Project, _ loaders: [String], _ mcVersions: [String], _ ignoreMods: [Config.Project], _ skipConfirmation: Bool, _ showChangelog: Bool, dependency: Bool = false) async throws {
+		private func update(_ configProject: Config.Project, _ loaders: [String], _ mcVersions: [String], _ ignoreMods: [Config.Project], _ skipConfirmation: Bool, _ showChangelog: Bool, _ directories: [Config.Directory: URL], dependency: Bool = false) async throws {
 			let dependencyLogModifier = dependency ? " dependency" : ""
 			
 			let project = try await getProject(for: configProject.id)
@@ -85,11 +85,11 @@ extension Modpack {
 			let type = projectType(with: loaders)
 			let baseURL: URL
 			if type == .datapack {
-				baseURL = ApiConfig.datapacksURL
+				baseURL = directories[.datapacks] ?? ApiConfig.baseURL.appending(path: "datapacks", directoryHint: .isDirectory)
 			} else if type == .resourcepack {
-				baseURL = ApiConfig.resourcepacksURL
+				baseURL = directories[.resourcepacks] ?? ApiConfig.baseURL.appending(path: "resourcepacks", directoryHint: .isDirectory)
 			} else {
-				baseURL = ApiConfig.modsURL
+				baseURL = directories[.mods] ?? ApiConfig.baseURL.appending(path: "mods", directoryHint: .isDirectory)
 			}
 			
 			let saveURL = baseURL.appendingPathComponent(file.filename)
@@ -163,7 +163,7 @@ extension Modpack {
 				}
 				
 				let dependencyMod = Config.Project(id: projectId)
-				try await update(dependencyMod, loaders, mcVersions, ignoreMods, skipConfirmation, showChangelog, dependency: true)
+				try await update(dependencyMod, loaders, mcVersions, ignoreMods, skipConfirmation, showChangelog, directories, dependency: true)
 			}
 		}
 		
@@ -176,7 +176,7 @@ extension Modpack {
 			let versionsString = "[\(config.versions.joined(separator: ", "))]"
 			logger.info("Checking projects for updates for Minecraft version(s) \(versionsString)\n")
 			
-			for url in [ApiConfig.modsURL, ApiConfig.datapacksURL, ApiConfig.resourcepacksURL] {
+			for url in config.directories.values {
 				if FileManager.default.fileExists(atPath: url.path()) {
 					continue
 				}
@@ -187,21 +187,17 @@ extension Modpack {
 			
 			logger.info("Checking mods for \(versionsString)...")
 			for mod in config.mods {
-				try await update(mod, config.loaders, config.versions, config.ignore, skipConfirmation, showChangelog)
+				try await update(mod, config.loaders, config.versions, config.ignore, skipConfirmation, showChangelog, config.directories)
 			}
 			
-			logger.info("")
-			
-			logger.info("Checking datapacks for \(versionsString)...")
+			logger.info("\nChecking datapacks for \(versionsString)...")
 			for datapack in config.datapacks {
-				try await update(datapack, ["datapack"], config.versions, config.ignore, skipConfirmation, showChangelog)
+				try await update(datapack, ["datapack"], config.versions, config.ignore, skipConfirmation, showChangelog, config.directories)
 			}
 			
-			logger.info("")
-			
-			logger.info("Checking resourcepacks for \(versionsString)...")
+			logger.info("\nChecking resourcepacks for \(versionsString)...")
 			for resourcepack in config.resourcepacks {
-				try await update(resourcepack, ["minecraft"], config.versions, config.ignore, skipConfirmation, showChangelog)
+				try await update(resourcepack, ["minecraft"], config.versions, config.ignore, skipConfirmation, showChangelog, config.directories)
 			}
 		}
 	}
