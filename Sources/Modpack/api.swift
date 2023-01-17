@@ -42,9 +42,6 @@ struct ApiConfig {
 	
 	static let userAgent = "github.com/Sammcb/Modpack/3.0.0 (sammcb.com)"
 	static let baseURL = URL(filePath: FileManager.default.currentDirectoryPath, directoryHint: .isDirectory)
-//	static let modsURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appending(path: "mods")
-//	static let datapacksURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appending(path: "datapacks")
-//	static let resourcepacksURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appending(path: "resourcepacks")
 }
 
 protocol ApiActor {

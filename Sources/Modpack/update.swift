@@ -58,7 +58,7 @@ extension Modpack {
 			}
 		}
 		
-		private func update(_ configProject: Config.Project, _ loaders: [String], _ mcVersions: [String], _ ignoreMods: [Config.Project], _ skipConfirmation: Bool, _ showChangelog: Bool, _ directories: [Config.Directory: URL], dependency: Bool = false) async throws {
+		private func update(_ configProject: Config.Project, _ loaders: [String], _ mcVersions: [String], _ ignoreMods: [Config.Project], _ skipConfirmation: Bool, _ showChangelog: Bool, _ directories: [ProjectType: URL], dependency: Bool = false) async throws {
 			let dependencyLogModifier = dependency ? " dependency" : ""
 			
 			let project = try await getProject(for: configProject.id)
@@ -83,13 +83,8 @@ extension Modpack {
 			}
 			
 			let type = projectType(with: loaders)
-			let baseURL: URL
-			if type == .datapack {
-				baseURL = directories[.datapacks] ?? ApiConfig.baseURL.appending(path: "datapacks", directoryHint: .isDirectory)
-			} else if type == .resourcepack {
-				baseURL = directories[.resourcepacks] ?? ApiConfig.baseURL.appending(path: "resourcepacks", directoryHint: .isDirectory)
-			} else {
-				baseURL = directories[.mods] ?? ApiConfig.baseURL.appending(path: "mods", directoryHint: .isDirectory)
+			guard let baseURL: URL = directories[type] else {
+				throw ModpackError.directoryMissing
 			}
 			
 			let saveURL = baseURL.appendingPathComponent(file.filename)

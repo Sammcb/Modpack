@@ -1,14 +1,6 @@
 import Foundation
 
 struct Config: Codable {
-	enum Directory: String, Identifiable, CaseIterable {
-		case mods
-		case datapacks
-		case resourcepacks
-		
-		var id: String { rawValue }
-	}
-	
 	struct Project: Codable {
 		let id: String
 	}
@@ -23,11 +15,11 @@ struct Config: Codable {
 	private let resourcepacksDirectory: String
 	let resourcepacks: [Config.Project]
 	
-	var directories: [Directory: URL] {
+	var directories: [ProjectType: URL] {
 		[
-			.mods: ApiConfig.baseURL.appending(path: modsDirectory, directoryHint: .isDirectory),
-			.datapacks: ApiConfig.baseURL.appending(path: datapacksDirectory, directoryHint: .isDirectory),
-			.resourcepacks: ApiConfig.baseURL.appending(path: resourcepacksDirectory, directoryHint: .isDirectory)
+			.mod: ApiConfig.baseURL.appending(path: modsDirectory, directoryHint: .isDirectory),
+			.datapack: ApiConfig.baseURL.appending(path: datapacksDirectory, directoryHint: .isDirectory),
+			.resourcepack: ApiConfig.baseURL.appending(path: resourcepacksDirectory, directoryHint: .isDirectory)
 		]
 	}
 }
@@ -89,6 +81,7 @@ struct ResponseError: Codable {
 
 enum ModpackError: Error {
 	case responseHeaders
+	case directoryMissing
 	case api(_ error: String)
 }
 
