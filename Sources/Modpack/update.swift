@@ -29,35 +29,6 @@ extension Modpack {
 			}
 		}
 		
-		private func unzip(at saveURL: URL) throws {
-			let unzipPath = "/usr/bin/unzip"
-			
-			guard FileManager.default.isExecutableFile(atPath: unzipPath) else {
-				logger.notice("'\(unzipPath)' does not appear to contain the 'unzip' executable or does not exist. The downloaded datapack will need to be unzipped manually.")
-				return
-			}
-			
-			let unzip = Process()
-			unzip.executableURL = URL(filePath: unzipPath)
-			unzip.arguments = [
-				"-qq",
-				saveURL.path(percentEncoded: false),
-				"-d",
-				saveURL.deletingPathExtension().path(percentEncoded: false)
-			]
-			
-			try unzip.run()
-			unzip.waitUntilExit()
-			
-			try FileManager.default.removeItem(at: saveURL)
-			
-			if unzip.terminationStatus == 0 {
-				logger.info("Latest version installed successfully!")
-			} else {
-				logger.error("Unzip failed.")
-			}
-		}
-		
 		private func update(_ configProject: Config.Project, _ loaders: [String], _ mcVersions: [String], _ ignoreMods: [Config.Project], _ skipConfirmation: Bool, _ showChangelog: Bool, _ directories: [ProjectType: URL], dependency: Bool = false) async throws {
 			let dependencyLogModifier = dependency ? " dependency" : ""
 			
@@ -89,8 +60,7 @@ extension Modpack {
 			
 			let saveURL = baseURL.appendingPathComponent(file.filename)
 			
-			let checkSaveURL = type == .mod ? saveURL : saveURL.deletingPathExtension()
-			if FileManager.default.fileExists(atPath: checkSaveURL.path(percentEncoded: false)) {
+			if FileManager.default.fileExists(atPath: saveURL.path(percentEncoded: false)) {
 				logger.debug("\tLastest version already exists...")
 				return
 			}
@@ -103,10 +73,7 @@ extension Modpack {
 					continue
 				}
 				
-				var checkFileURL = baseURL.appendingPathComponent(versionFile.filename)
-				if type != .mod {
-					checkFileURL.deletePathExtension()
-				}
+				let checkFileURL = baseURL.appendingPathComponent(versionFile.filename)
 				if FileManager.default.fileExists(atPath: checkFileURL.path(percentEncoded: false)) {
 					currentFileURL = checkFileURL
 					break
@@ -145,12 +112,8 @@ extension Modpack {
 			let (downloadURL, _) = try await URLSession.shared.download(for: request)
 			
 			try FileManager.default.moveItem(at: downloadURL, to: saveURL)
-			
-			if type != .mod {
-				try unzip(at: saveURL)
-			} else {
-				logger.info("Latest version installed successfully!")
-			}
+
+			logger.info("Latest version installed successfully!")
 			
 			for modDependency in latestVersion.dependencies?.filter({ $0.dependencyType == .required }) ?? [] {
 				guard let projectId = modDependency.projectId else {
