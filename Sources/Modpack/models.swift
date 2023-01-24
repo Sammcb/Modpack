@@ -1,20 +1,32 @@
 import Foundation
 
-struct Mod: Codable {
-	let name: String
-	let id: String
-	let url: String?
-}
-
 struct Config: Codable {
+	struct Project: Codable {
+		let id: String
+	}
+	
 	let loaders: [String]
 	let versions: [String]
-	let mods: [Mod]
-	let ignore: [Mod]
+	private let modsDirectory: String
+	let mods: [Config.Project]
+	let ignore: [Config.Project]
+	private let datapacksDirectory: String
+	let datapacks: [Config.Project]
+	private let resourcepacksDirectory: String
+	let resourcepacks: [Config.Project]
+	
+	var directories: [ProjectType: URL] {
+		[
+			.mod: ApiConfig.baseURL.appending(path: modsDirectory, directoryHint: .isDirectory),
+			.datapack: ApiConfig.baseURL.appending(path: datapacksDirectory, directoryHint: .isDirectory),
+			.resourcepack: ApiConfig.baseURL.appending(path: resourcepacksDirectory, directoryHint: .isDirectory)
+		]
+	}
 }
 
 struct Project: Codable {
 	let title: String
+	let id: String
 }
 
 struct Version: Codable {
@@ -69,5 +81,14 @@ struct ResponseError: Codable {
 
 enum ModpackError: Error {
 	case responseHeaders
+	case directoryMissing
 	case api(_ error: String)
+}
+
+enum ProjectType: String, Identifiable, CaseIterable {
+	case mod
+	case datapack
+	case resourcepack
+	
+	var id: String { rawValue }
 }

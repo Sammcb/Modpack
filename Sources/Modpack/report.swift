@@ -3,10 +3,11 @@ import ArgumentParser
 
 extension Modpack {
 	struct Report: AsyncParsableCommand, ApiActor {
-		private struct ModReport {
+		private struct ProjectReport {
 			let id: String
 			let name: String
 			let valid: Bool
+			let projectType: ProjectType
 			let dependency: Bool
 			var ignore: Bool = false
 		}
@@ -26,43 +27,44 @@ extension Modpack {
 				throw ValidationError("Mod list must be a json file.")
 			}
 			
-			guard FileManager.default.fileExists(atPath: configFileURL.path) else {
+			guard FileManager.default.fileExists(atPath: configPath) else {
 				throw ValidationError("Mod list file does not exist.")
 			}
 		}
 		
-		private func report(_ mod: Mod, _ loaders: [String], _ mcVersions: [String], _ ignoreMods: [Mod], checkedMods: [String], dependency: Bool = false) async throws -> [ModReport] {
-			if checkedMods.contains(mod.id) {
+		private func report(_ configProject: Config.Project, _ loaders: [String], _ mcVersions: [String], _ ignoreProjects: [Config.Project], checkedMods: [ProjectReport], dependency: Bool = false) async throws -> [ProjectReport] {
+			if checkedMods.contains(where: { $0.id == configProject.id }) {
 				return []
 			}
 			
-			let dependencyLogModifier = dependency ? " dependency" : ""
-			
-			let project = try await getProject(for: mod.id)
-			
-			if ignoreMods.contains(where: { $0.id == mod.id }) {
-				return [ModReport(id: mod.id, name: project.title, valid: false, dependency: dependency, ignore: true)]
+			if ignoreProjects.contains(where: { $0.id == configProject.id }) {
+				return [ProjectReport(id: configProject.id, name: "", valid: false, projectType: .mod, dependency: false, ignore: true)]
 			}
 			
-			let versions = try await getVersions(for: mod, project: project, loaders: loaders, mcVersions: mcVersions, dependencyLogModifier: dependencyLogModifier)
+			let project = try await getProject(for: configProject.id)
+			
+			let versions = try await getVersions(for: project, loaders: loaders, mcVersions: mcVersions)
+			
+			let type = projectType(with: loaders)
 			
 			guard let validVersion = versions.first else {
-				return [ModReport(id: mod.id, name: project.title, valid: false, dependency: dependency)]
+				return [ProjectReport(id: project.id, name: project.title, valid: false, projectType: type, dependency: dependency)]
 			}
 			
-			var modReport = [ModReport(id: mod.id, name: project.title, valid: true, dependency: dependency)]
-			for modDependency in validVersion.dependencies?.filter({ $0.dependencyType == .required }) ?? [] {
-				guard let projectId = modDependency.projectId else {
+			let projectReport = ProjectReport(id: project.id, name: project.title, valid: true, projectType: type, dependency: dependency)
+			var projectReports = [projectReport]
+			for projectDependency in validVersion.dependencies?.filter({ $0.dependencyType == .required }) ?? [] {
+				guard let projectId = projectDependency.projectId else {
 					continue
 				}
 				
-				let dependencyMod = Mod(name: "dependency", id: projectId, url: nil)
-				let dependencyReports = try await report(dependencyMod, loaders, mcVersions, ignoreMods, checkedMods: checkedMods + [mod.id], dependency: true)
+				let dependencyProject = Config.Project(id: projectId)
+				let dependencyReports = try await report(dependencyProject, loaders, mcVersions, ignoreProjects, checkedMods: checkedMods + [projectReport], dependency: true)
 				
-				modReport.append(contentsOf: dependencyReports)
+				projectReports.append(contentsOf: dependencyReports)
 			}
 			
-			return modReport
+			return projectReports
 		}
 		
 		mutating func run() async throws {
@@ -71,24 +73,61 @@ extension Modpack {
 			let configData = try Data(contentsOf: URL(fileURLWithPath: configPath))
 			let config = try JSONDecoder().decode(Config.self, from: configData)
 			
-			logger.info("Generating report for Minecraft version(s) [\(versions.joined(separator: ", "))]...")
+			let versionsString = "[\(versions.joined(separator: ", "))]"
 			
-			var modReports: [ModReport] = []
-			for mod in config.mods where mod.url == nil {
-				let modReport = try await report(mod, config.loaders, versions, config.ignore, checkedMods: modReports.map({ $0.id }))
-				modReports.append(contentsOf: modReport)
+			logger.info("Generating report for Minecraft version(s) \(versionsString)...")
+			
+			var projectReports: [ProjectReport] = []
+			for mod in config.mods {
+				let modReport = try await report(mod, config.loaders, versions, config.ignore, checkedMods: projectReports)
+				projectReports.append(contentsOf: modReport)
 			}
 			
-			modReports.removeAll(where: { $0.ignore })
-			let readyCount = modReports.filter({ $0.valid }).count
+			for datapack in config.datapacks {
+				let datapackReport = try await report(datapack, ["datapack"], versions, config.ignore, checkedMods: projectReports)
+				projectReports.append(contentsOf: datapackReport)
+			}
+			
+			for resourcepack in config.resourcepacks {
+				let resourcepackReport = try await report(resourcepack, ["minecraft"], versions, config.ignore, checkedMods: projectReports)
+				projectReports.append(contentsOf: resourcepackReport)
+			}
+			
+			projectReports.removeAll(where: { $0.ignore })
+			
+			for type in ProjectType.allCases {
+				let filteredReports = projectReports.filter({ $0.projectType == type })
+				
+				if filteredReports.isEmpty {
+					continue
+				}
+				
+				let readyCount = filteredReports.filter({ $0.valid }).count
+				let typeString = "\(type.rawValue.capitalized)s"
+				logger.info("\(typeString) (total)")
+				logger.info("[\(readyCount)/\(filteredReports.count)] support \(versionsString)\n")
+				
+				let invalidProjects = filteredReports.filter({ !$0.valid }).map({ $0.name })
+				if !invalidProjects.isEmpty {
+					logger.notice("\(typeString) not compatible:\n\(invalidProjects.joined(separator: "\n"))\n")
+				}
+				
+				let dependencyReports = filteredReports.filter({ $0.dependency })
+				let dependencyReadyCount = dependencyReports.filter({ $0.valid }).count
+				let dependencyCount = dependencyReports.count
+				
+				guard dependencyCount > 0 else {
+					continue
+				}
+				
+				logger.info("\(typeString) (dependencies)")
+				logger.info("[\(dependencyReadyCount)/\(dependencyCount)] support \(versionsString)\n")
+			}
+			
+			let readyCount = projectReports.filter({ $0.valid }).count
+			
 			logger.info("Total")
-			logger.info("[\(readyCount)/\(modReports.count)] support [\(versions.joined(separator: ", "))]\n")
-			logger.notice("Mods not compatible:\n\(modReports.filter({ !$0.valid }).map({ $0.name }).joined(separator: "\n"))\n")
-			let dependencyReadyCount = modReports.filter({ $0.valid && $0.dependency }).count
-			let dependencyCount = modReports.filter({ $0.dependency }).count
-			logger.info("Dependency")
-			logger.info("[\(dependencyReadyCount)/\(dependencyCount)] support [\(versions.joined(separator: ", "))]\n")
-			logger.warning("CurseForge mods need to be checked manually.")
+			logger.info("[\(readyCount)/\(projectReports.count)] support \(versionsString)")
 		}
 	}
 }

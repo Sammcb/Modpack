@@ -40,15 +40,15 @@ extension JSONEncoder.DateEncodingStrategy {
 struct ApiConfig {
 	private init() {}
 	
-	static let userAgent = "github.com/Sammcb/Modpack/2.1.0 (sammcb.com)"
-	static let modsURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appendingPathComponent("mods")
+	static let userAgent = "github.com/Sammcb/Modpack/3.0.0 (sammcb.com)"
+	static let baseURL = URL(filePath: FileManager.default.currentDirectoryPath, directoryHint: .isDirectory)
 }
 
 protocol ApiActor {
 	var baseURLComponents: URLComponents { get }
 	func avoidRateLimit(using response: HTTPURLResponse) async throws
 	func getProject(for id: String) async throws -> Project
-	func getVersions(for mod: Mod, project: Project, loaders: [String], mcVersions: [String], dependencyLogModifier: String) async throws -> [Version]
+	func getVersions(for project: Project, loaders: [String], mcVersions: [String]) async throws -> [Version]
 }
 
 extension ApiActor {
@@ -90,7 +90,6 @@ extension ApiActor {
 		}
 		
 		let buffer: UInt64 = 1
-		
 		let waitTime = timeRemaining + buffer
 		
 		logger.notice("Request limit reached. Waiting \(waitTime)s for limit reset...")
@@ -157,7 +156,7 @@ extension ApiActor {
 		version.loaders.contains(loader) && version.gameVersions.contains(mcVersion)
 	}
 	
-	private func sort(project: Project, versions: [Version], loaders: [String], mcVersions: [String], _ dependencyLogModifier: String = "") -> [Version] {
+	private func sort(versions: [Version], loaders: [String], mcVersions: [String]) -> [Version] {
 		var versionsToCheck = versions
 		var sortedVersions: [Version] = []
 		for loader in loaders {
@@ -166,7 +165,7 @@ extension ApiActor {
 				versionsToCheck.removeAll(where: { match($0, loader: loader, mcVersion: mcVersion) })
 				
 				if matchingVersions.isEmpty && sortedVersions.isEmpty {
-					logger.debug("No versions of\(dependencyLogModifier) \(project.title) found for Minecraft \(mcVersion) on \(loader)")
+					logger.debug("\tNo versions found for Minecraft \(mcVersion) on \(loader)")
 					continue
 				}
 				
@@ -177,8 +176,20 @@ extension ApiActor {
 		return sortedVersions
 	}
 	
-	func getVersions(for mod: Mod, project: Project, loaders: [String], mcVersions: [String], dependencyLogModifier: String) async throws -> [Version] {
-		let versions = try await getVersions(for: mod.id, loaders, mcVersions)
-		return sort(project: project, versions: versions, loaders: loaders, mcVersions: mcVersions, dependencyLogModifier)
+	func getVersions(for project: Project, loaders: [String], mcVersions: [String]) async throws -> [Version] {
+		let versions = try await getVersions(for: project.id, loaders, mcVersions)
+		return sort(versions: versions, loaders: loaders, mcVersions: mcVersions)
+	}
+	
+	func projectType(with loaders: [String]) -> ProjectType {
+		if loaders.contains("datapack") {
+			return .datapack
+		}
+		
+		if loaders.contains("minecraft") {
+			return .resourcepack
+		}
+		
+		return .mod
 	}
 }

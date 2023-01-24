@@ -14,9 +14,6 @@ extension Modpack {
 		@Flag(name: [.customShort("c"), .long], help: "Show changelogs for new versions.")
 		var showChangelog = false
 		
-		@Flag(name: .customLong("r"), help: "Reinstall CurseForge mods.")
-		var reloadCurseForge = false
-		
 		@Flag(name: .shortAndLong, help: "Print trace and debug information.")
 		var verbose = false
 		
@@ -27,42 +24,24 @@ extension Modpack {
 				throw ValidationError("Mod list must be a json file.")
 			}
 			
-			guard FileManager.default.fileExists(atPath: configFileURL.path) else {
+			guard FileManager.default.fileExists(atPath: configPath) else {
 				throw ValidationError("Mod list file does not exist.")
 			}
 		}
 		
-		private func updateCurseForge(_ mod: Mod, _ reloadCurseForge: Bool) async throws {
-			logger.notice("Downloading CurseForge mod \(mod.name)...")
-			let saveURL = ApiConfig.modsURL.appendingPathComponent("\(mod.name).jar")
-			
-			if FileManager.default.fileExists(atPath: saveURL.path) && reloadCurseForge {
-				logger.notice("CurseForge mod \(mod.name) already installed, reinstalling...")
-				try FileManager.default.removeItem(at: saveURL)
-			} else if FileManager.default.fileExists(atPath: saveURL.path) && !reloadCurseForge {
-				return
-			}
-			
-			var request = URLRequest(url: URL(string: mod.url!)!)
-			request.httpMethod = "GET"
-			let (downloadURL, _) = try await URLSession.shared.download(for: request)
-
-			try FileManager.default.moveItem(at: downloadURL, to: saveURL)
-		}
-		
-		private func update(_ mod: Mod, _ loaders: [String], _ mcVersions: [String], _ ignoreMods: [Mod], _ skipConfirmation: Bool, _ showChangelog: Bool, dependency: Bool = false) async throws {
+		private func update(_ configProject: Config.Project, _ loaders: [String], _ mcVersions: [String], _ ignoreMods: [Config.Project], _ skipConfirmation: Bool, _ showChangelog: Bool, _ directories: [ProjectType: URL], dependency: Bool = false) async throws {
 			let dependencyLogModifier = dependency ? " dependency" : ""
 			
-			let project = try await getProject(for: mod.id)
+			let project = try await getProject(for: configProject.id)
 			
-			if ignoreMods.contains(where: { $0.id == mod.id }) {
+			if ignoreMods.contains(where: { $0.id == project.id }) {
 				logger.debug("Ignoring\(dependencyLogModifier) \(project.title)...")
 				return
 			}
 			
 			logger.info("Fetching versions for\(dependencyLogModifier) \(project.title)...")
 			
-			let versions = try await getVersions(for: mod, project: project, loaders: loaders, mcVersions: mcVersions, dependencyLogModifier: dependencyLogModifier)
+			let versions = try await getVersions(for: project, loaders: loaders, mcVersions: mcVersions)
 			
 			guard let latestVersion = versions.first else {
 				return
@@ -74,25 +53,29 @@ extension Modpack {
 				return
 			}
 			
-			let saveURL = ApiConfig.modsURL.appendingPathComponent(file.filename)
+			let type = projectType(with: loaders)
+			guard let baseURL: URL = directories[type] else {
+				throw ModpackError.directoryMissing
+			}
 			
-			if FileManager.default.fileExists(atPath: saveURL.path) {
-				logger.debug("Lastest version of\(dependencyLogModifier) \(project.title) already exists...")
+			let saveURL = baseURL.appendingPathComponent(file.filename)
+			
+			if FileManager.default.fileExists(atPath: saveURL.path(percentEncoded: false)) {
+				logger.debug("\tLastest version already exists...")
 				return
 			}
 			
 			logger.info("A new version of\(dependencyLogModifier) \(project.title) is available [\(latestVersion.versionNumber)]")
 			
-			var currentFilePath: String?
+			var currentFileURL: URL?
 			for version in versions {
-				
 				guard let versionFile = version.files.filter({ $0.primary }).first else {
 					continue
 				}
 				
-				let currentFileURL = ApiConfig.modsURL.appendingPathComponent(versionFile.filename)
-				if FileManager.default.fileExists(atPath: currentFileURL.path) {
-					currentFilePath = currentFileURL.path
+				let checkFileURL = baseURL.appendingPathComponent(versionFile.filename)
+				if FileManager.default.fileExists(atPath: checkFileURL.path(percentEncoded: false)) {
+					currentFileURL = checkFileURL
 					break
 				}
 				
@@ -105,21 +88,21 @@ extension Modpack {
 			}
 			
 			if !skipConfirmation {
-				logger.info("Install? [y/N]")
+				logger.info("Update\(dependencyLogModifier) \(project.title)? [y/N]")
 				
 				guard let answer = readLine() else {
 					return
 				}
 				
 				guard answer.lowercased() == "y" else {
-					logger.warning("Skipping installation of\(dependencyLogModifier) \(project.title) [\(latestVersion.versionNumber)]")
+					logger.warning("Skipping update of\(dependencyLogModifier) \(project.title) [\(latestVersion.versionNumber)]")
 					return
 				}
 			}
 			
-			if let currentFilePath {
+			if let currentFileURL {
 				logger.info("Removing old version...")
-				try FileManager.default.removeItem(atPath: currentFilePath)
+				try FileManager.default.removeItem(at: currentFileURL)
 			}
 			
 			logger.info("Downloading latest version...")
@@ -129,7 +112,7 @@ extension Modpack {
 			let (downloadURL, _) = try await URLSession.shared.download(for: request)
 			
 			try FileManager.default.moveItem(at: downloadURL, to: saveURL)
-			
+
 			logger.info("Latest version installed successfully!")
 			
 			for modDependency in latestVersion.dependencies?.filter({ $0.dependencyType == .required }) ?? [] {
@@ -137,8 +120,8 @@ extension Modpack {
 					continue
 				}
 				
-				let dependencyMod = Mod(name: "dependency", id: projectId, url: nil)
-				try await update(dependencyMod, loaders, mcVersions, ignoreMods, skipConfirmation, showChangelog, dependency: true)
+				let dependencyMod = Config.Project(id: projectId)
+				try await update(dependencyMod, loaders, mcVersions, ignoreMods, skipConfirmation, showChangelog, directories, dependency: true)
 			}
 		}
 		
@@ -148,19 +131,31 @@ extension Modpack {
 			let configData = try Data(contentsOf: URL(fileURLWithPath: configPath))
 			let config = try JSONDecoder().decode(Config.self, from: configData)
 			
-			logger.info("Checking mod list for updates for Minecraft version(s) [\(config.versions.joined(separator: ", "))]")
+			let versionsString = "[\(config.versions.joined(separator: ", "))]"
+			logger.info("Checking projects for updates for Minecraft version(s) \(versionsString)\n")
 			
-			if !FileManager.default.fileExists(atPath: ApiConfig.modsURL.path) {
-				logger.debug("'mods' directory does not exist, creating...")
-				try FileManager.default.createDirectory(at: ApiConfig.modsURL, withIntermediateDirectories: true)
+			for url in config.directories.values {
+				if FileManager.default.fileExists(atPath: url.path()) {
+					continue
+				}
+				
+				logger.debug("'\(url.lastPathComponent)' directory does not exist, creating...")
+				try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
 			}
 			
+			logger.info("Checking mods for \(versionsString)...")
 			for mod in config.mods {
-				if mod.url == nil {
-					try await update(mod, config.loaders, config.versions, config.ignore, skipConfirmation, showChangelog, dependency: false)
-				} else {
-					try await updateCurseForge(mod, reloadCurseForge)
-				}
+				try await update(mod, config.loaders, config.versions, config.ignore, skipConfirmation, showChangelog, config.directories)
+			}
+			
+			logger.info("\nChecking datapacks for \(versionsString)...")
+			for datapack in config.datapacks {
+				try await update(datapack, ["datapack"], config.versions, config.ignore, skipConfirmation, showChangelog, config.directories)
+			}
+			
+			logger.info("\nChecking resourcepacks for \(versionsString)...")
+			for resourcepack in config.resourcepacks {
+				try await update(resourcepack, ["minecraft"], config.versions, config.ignore, skipConfirmation, showChangelog, config.directories)
 			}
 		}
 	}
