@@ -94,8 +94,8 @@ extension ApiActor {
 		try await Task.sleep(nanoseconds: 1000000000 * waitTime)
 	}
 	
-	private func get(_ request: URLRequest) async throws -> Data {
-		var request = request
+	private func get(_ url: URL) async throws -> Data {
+		var request = URLRequest(url: url)
 		request.httpMethod = "GET"
 		request.setValue(ApiConfig.userAgent, forHTTPHeaderField: "User-Agent")
 		
@@ -119,8 +119,7 @@ extension ApiActor {
 		var components = baseURLComponents
 		components.path.append("project/\(id)")
 		
-		var request = URLRequest(url: components.url!)
-		let data = try await get(request)
+		let data = try await get(components.url!)
 		
 		return try decoder.decode(Project.self, from: data)
 	}
@@ -133,8 +132,7 @@ extension ApiActor {
 			URLQueryItem(name: "game_versions", value: "[\(versions.map({ "\"\($0)\"" }).joined(separator: ","))]")
 		]
 		
-		var request = URLRequest(url: components.url!)
-		let data = try await get(request)
+		let data = try await get(components.url!)
 		
 		return try decoder.decode([Version].self, from: data)
 	}
@@ -172,8 +170,7 @@ extension ApiActor {
 		var components = baseURLComponents
 		components.path.append("version/\(id)")
 		
-		var request = URLRequest(url: components.url!)
-		let data = try await get(request)
+		let data = try await get(components.url!)
 		
 		return try decoder.decode(Version.self, from: data)
 	}
