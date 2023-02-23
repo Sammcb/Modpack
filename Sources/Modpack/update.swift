@@ -194,6 +194,7 @@ extension Modpack {
 					newState.projects.merge(updatedState.projects, uniquingKeysWith: { (_, new) in new })
 					state.projects.merge(updatedState.projects, uniquingKeysWith: { (_, new) in new })
 				}
+				logger.info("")
 			}
 
 			let encoder = JSONEncoder()
