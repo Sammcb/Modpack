@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 extension ISO8601DateFormatter {
 	convenience init(_ formatOptions: Options) {
@@ -42,21 +43,18 @@ struct ApiConfig {
 	
 	static let userAgent = "github.com/Sammcb/Modpack/3.0.0 (sammcb.com)"
 	static let baseURL = URL(filePath: FileManager.default.currentDirectoryPath, directoryHint: .isDirectory)
+	static let configFileURL = baseURL.appending(path: "mods.json", directoryHint: .notDirectory)
+	static let lockFileURL = baseURL.appending(path: "mods.lock", directoryHint: .notDirectory)
 }
 
-protocol ApiActor {
-	var baseURLComponents: URLComponents { get }
-	func avoidRateLimit(using response: HTTPURLResponse) async throws
-	func getProject(for id: String) async throws -> Project
-	func getVersions(for project: Project, loaders: [String], mcVersions: [String]) async throws -> [Version]
-}
+protocol ApiActor {}
 
 extension ApiActor {
 	var baseURLComponents: URLComponents {
 		var components = URLComponents()
 		components.scheme = "https"
 		components.host = "api.modrinth.com"
-		components.path = "/v2/project/"
+		components.path = "/v2/"
 		return components
 	}
 	
@@ -96,11 +94,8 @@ extension ApiActor {
 		try await Task.sleep(nanoseconds: 1000000000 * waitTime)
 	}
 	
-	func getProject(for id: String) async throws -> Project {
-		var components = baseURLComponents
-		components.path.append("\(id)")
-		
-		var request = URLRequest(url: components.url!)
+	private func get(_ url: URL) async throws -> Data {
+		var request = URLRequest(url: url)
 		request.httpMethod = "GET"
 		request.setValue(ApiConfig.userAgent, forHTTPHeaderField: "User-Agent")
 		
@@ -110,44 +105,34 @@ extension ApiActor {
 			throw ModpackError.responseHeaders
 		}
 		
-		let error = try? decoder.decode(ResponseError.self, from: data)
-		
-		if let error {
+		if let error = try? decoder.decode(ResponseError.self, from: data) {
 			logger.error("\(error.description)")
 			throw ModpackError.api(error.error)
 		}
 		
 		try await avoidRateLimit(using: response)
+		
+		return data
+	}
+	
+	func getProject(for id: String) async throws -> Project {
+		var components = baseURLComponents
+		components.path.append("project/\(id)")
+		
+		let data = try await get(components.url!)
 		
 		return try decoder.decode(Project.self, from: data)
 	}
 	
 	private func getVersions(for projectId: String, _ loaders: [String], _ versions: [String]) async throws -> [Version] {
 		var components = baseURLComponents
-		components.path.append("\(projectId)/version")
+		components.path.append("project/\(projectId)/version")
 		components.queryItems = [
 			URLQueryItem(name: "loaders", value: "[\(loaders.map({ "\"\($0)\"" }).joined(separator: ","))]"),
 			URLQueryItem(name: "game_versions", value: "[\(versions.map({ "\"\($0)\"" }).joined(separator: ","))]")
 		]
 		
-		var request = URLRequest(url: components.url!)
-		request.httpMethod = "GET"
-		request.setValue(ApiConfig.userAgent, forHTTPHeaderField: "User-Agent")
-		
-		let (data, response) = try await URLSession.shared.data(for: request)
-		
-		guard let response = response as? HTTPURLResponse else {
-			throw ModpackError.responseHeaders
-		}
-		
-		let error = try? decoder.decode(ResponseError.self, from: data)
-		
-		if let error {
-			logger.error("\(error.description)")
-			throw ModpackError.api(error.error)
-		}
-		
-		try await avoidRateLimit(using: response)
+		let data = try await get(components.url!)
 		
 		return try decoder.decode([Version].self, from: data)
 	}
@@ -181,15 +166,131 @@ extension ApiActor {
 		return sort(versions: versions, loaders: loaders, mcVersions: mcVersions)
 	}
 	
-	func projectType(with loaders: [String]) -> ProjectType {
-		if loaders.contains("datapack") {
-			return .datapack
-		}
+	func getVersion(for id: String) async throws -> Version {
+		var components = baseURLComponents
+		components.path.append("version/\(id)")
 		
+		let data = try await get(components.url!)
+		
+		return try decoder.decode(Version.self, from: data)
+	}
+	
+	private func baseURL(for fileURL: URL, _ loaders: [String], _ config: Config) -> URL {
+		// Assume mods directory if a jar file
+		if fileURL.pathExtension == "jar" {
+			return config.directories[.mod] ?? ApiConfig.baseURL.appending(path: "mods", directoryHint: .isDirectory)
+		}
+		// Assume resourcepack if "minecraft" loader
 		if loaders.contains("minecraft") {
-			return .resourcepack
+			return config.directories[.resourcepack] ?? ApiConfig.baseURL.appending(path: "resourcepacks", directoryHint: .isDirectory)
+		}
+		// Assume datapack if "datapack" loader
+		if loaders.contains("datapack") {
+			return config.directories[.datapack] ?? ApiConfig.baseURL.appending(path: "datapacks", directoryHint: .isDirectory)
+		}
+		// Assume shaderpack
+		return config.directories[.shaderpack] ?? ApiConfig.baseURL.appending(path: "shaderpacks", directoryHint: .isDirectory)
+	}
+	
+	func install(from state: State, _ config: Config) async throws {
+		let fileHashes = Set(state.projects.values.compactMap({ $0.installed?.fileHashes }).joined())
+		
+		var localFileHashes: [String] = []
+		
+		for (urlType, url) in config.directories {
+			let files = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)
+			for fileURL in files {
+				// Ignore manually managed files
+				if config.manual.map({ $0.id }).contains(fileURL.lastPathComponent) {
+					continue
+				}
+				
+				let fileData = try Data(contentsOf: fileURL)
+				let fileHash = SHA512.hash(data: fileData)
+				let hashHex = fileHash.compactMap({ String(format: "%02x", $0) }).joined()
+				
+				// Probably a shaderpack config file
+				if urlType == .shaderpack && !fileHashes.contains(hashHex) && fileURL.pathExtension == "txt" {
+					continue
+				}
+				
+				// Remove installed files not in the .lock file
+				guard fileHashes.contains(hashHex) else {
+					try FileManager.default.trashItem(at: fileURL, resultingItemURL: nil)
+					continue
+				}
+				
+				localFileHashes.append(hashHex)
+			}
 		}
 		
-		return .mod
+		if Set(localFileHashes) == fileHashes {
+			logger.info("Already up to date!")
+			return
+		}
+		
+		logger.info("Downloading files...")
+		
+		let versions = state.projects.values.compactMap({ $0.installed }).filter({ !$0.fileHashes.isSubset(of: localFileHashes) })
+		for installedVersion in versions {
+			let version = try await getVersion(for: installedVersion.versionId)
+			
+			for file in version.files {
+				guard installedVersion.fileHashes.contains(file.hashes.sha512) else {
+					continue
+				}
+				
+				if localFileHashes.contains(file.hashes.sha512) {
+					continue
+				}
+				
+				guard let filenameURL = URL(string: file.url) else {
+					continue
+				}
+				
+				let baseURL = baseURL(for: filenameURL, version.loaders, config)
+				let saveURL = baseURL.appending(component: file.filename)
+				
+				logger.debug("Downloading '\(file.filename)'...")
+				
+				var request = URLRequest(url: URL(string: file.url)!)
+				request.httpMethod = "GET"
+				let (downloadURL, _) = try await URLSession.shared.download(for: request)
+				try FileManager.default.moveItem(at: downloadURL, to: saveURL)
+			}
+		}
+		
+		logger.info("Done!")
+	}
+	
+	func id(for dependency: Version.Dependency) async throws -> String? {
+		if let projectId = dependency.projectId {
+			return projectId
+		}
+		
+		guard let versionId = dependency.versionId else {
+			return nil
+		}
+		
+		let version = try await getVersion(for: versionId)
+		return version.projectId
+	}
+	
+	func loaders(for type: ProjectType, _ config: Config) -> [String] {
+		switch type {
+		case .mod: return config.loaders
+		case .datapack: return ["datapack"]
+		case .resourcepack: return ["minecraft"]
+		case .shaderpack: return config.shaderLoaders
+		}
+	}
+	
+	func projects(for type: ProjectType, _ config: Config) -> [Config.Project] {
+		switch type {
+		case .mod: return config.mods
+		case .datapack: return config.datapacks
+		case .resourcepack: return config.resourcepacks
+		case .shaderpack: return config.shaderpacks
+		}
 	}
 }

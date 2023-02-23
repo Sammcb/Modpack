@@ -14,38 +14,27 @@ extension Modpack {
 		
 		static var configuration = CommandConfiguration(abstract: "Check modpack compatibility for a specified Minecraft version.")
 		
-		@Argument(help: "Mod list json file.")
-		var configPath: String
-		
 		@Argument(help: "Minecraft version to check compatibility with.")
 		var versions: [String]
 		
 		func validate() throws {
-			let configFileURL = URL(fileURLWithPath: configPath)
-			
-			guard configFileURL.pathExtension == "json" else {
-				throw ValidationError("Mod list must be a json file.")
-			}
-			
-			guard FileManager.default.fileExists(atPath: configPath) else {
-				throw ValidationError("Mod list file does not exist.")
+			guard FileManager.default.fileExists(atPath: ApiConfig.configFileURL.path()) else {
+				throw ValidationError("'\(ApiConfig.configFileURL.lastPathComponent)' file does not exist.")
 			}
 		}
 		
-		private func report(_ configProject: Config.Project, _ loaders: [String], _ mcVersions: [String], _ ignoreProjects: [Config.Project], checkedMods: [ProjectReport], dependency: Bool = false) async throws -> [ProjectReport] {
+		private func report(_ configProject: Config.Project, _ type: ProjectType, _ loaders: [String], _ config: Config, checkedMods: [ProjectReport], dependency: Bool = false) async throws -> [ProjectReport] {
 			if checkedMods.contains(where: { $0.id == configProject.id }) {
 				return []
 			}
 			
-			if ignoreProjects.contains(where: { $0.id == configProject.id }) {
+			if config.ignore.contains(where: { $0.id == configProject.id }) {
 				return [ProjectReport(id: configProject.id, name: "", valid: false, projectType: .mod, dependency: false, ignore: true)]
 			}
 			
 			let project = try await getProject(for: configProject.id)
 			
-			let versions = try await getVersions(for: project, loaders: loaders, mcVersions: mcVersions)
-			
-			let type = projectType(with: loaders)
+			let versions = try await getVersions(for: project, loaders: loaders, mcVersions: config.versions)
 			
 			guard let validVersion = versions.first else {
 				return [ProjectReport(id: project.id, name: project.title, valid: false, projectType: type, dependency: dependency)]
@@ -54,12 +43,12 @@ extension Modpack {
 			let projectReport = ProjectReport(id: project.id, name: project.title, valid: true, projectType: type, dependency: dependency)
 			var projectReports = [projectReport]
 			for projectDependency in validVersion.dependencies?.filter({ $0.dependencyType == .required }) ?? [] {
-				guard let projectId = projectDependency.projectId else {
+				guard let projectId = try await id(for: projectDependency) else {
 					continue
 				}
 				
 				let dependencyProject = Config.Project(id: projectId)
-				let dependencyReports = try await report(dependencyProject, loaders, mcVersions, ignoreProjects, checkedMods: checkedMods + [projectReport], dependency: true)
+				let dependencyReports = try await report(dependencyProject, type, loaders, config, checkedMods: checkedMods + [projectReport], dependency: true)
 				
 				projectReports.append(contentsOf: dependencyReports)
 			}
@@ -70,7 +59,7 @@ extension Modpack {
 		mutating func run() async throws {
 			logger.logLevel = .info
 			
-			let configData = try Data(contentsOf: URL(fileURLWithPath: configPath))
+			let configData = try Data(contentsOf: ApiConfig.configFileURL)
 			let config = try JSONDecoder().decode(Config.self, from: configData)
 			
 			let versionsString = "[\(versions.joined(separator: ", "))]"
@@ -78,19 +67,14 @@ extension Modpack {
 			logger.info("Generating report for Minecraft version(s) \(versionsString)...")
 			
 			var projectReports: [ProjectReport] = []
-			for mod in config.mods {
-				let modReport = try await report(mod, config.loaders, versions, config.ignore, checkedMods: projectReports)
-				projectReports.append(contentsOf: modReport)
-			}
 			
-			for datapack in config.datapacks {
-				let datapackReport = try await report(datapack, ["datapack"], versions, config.ignore, checkedMods: projectReports)
-				projectReports.append(contentsOf: datapackReport)
-			}
-			
-			for resourcepack in config.resourcepacks {
-				let resourcepackReport = try await report(resourcepack, ["minecraft"], versions, config.ignore, checkedMods: projectReports)
-				projectReports.append(contentsOf: resourcepackReport)
+			for projectType in ProjectType.allCases {
+				let projects = projects(for: projectType, config)
+				let loaders = loaders(for: projectType, config)
+				for project in projects {
+					let projectReport = try await report(project, projectType, loaders, config, checkedMods: projectReports)
+					projectReports.append(contentsOf: projectReport)
+				}
 			}
 			
 			projectReports.removeAll(where: { $0.ignore })

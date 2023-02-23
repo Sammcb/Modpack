@@ -14,14 +14,33 @@ struct Config: Codable {
 	let datapacks: [Config.Project]
 	private let resourcepacksDirectory: String
 	let resourcepacks: [Config.Project]
+	let shaderLoaders: [String]
+	private let shaderpacksDirectory: String
+	let shaderpacks: [Config.Project]
+	let manual: [Config.Project]
 	
 	var directories: [ProjectType: URL] {
 		[
 			.mod: ApiConfig.baseURL.appending(path: modsDirectory, directoryHint: .isDirectory),
 			.datapack: ApiConfig.baseURL.appending(path: datapacksDirectory, directoryHint: .isDirectory),
-			.resourcepack: ApiConfig.baseURL.appending(path: resourcepacksDirectory, directoryHint: .isDirectory)
+			.resourcepack: ApiConfig.baseURL.appending(path: resourcepacksDirectory, directoryHint: .isDirectory),
+			.shaderpack: ApiConfig.baseURL.appending(path: shaderpacksDirectory, directoryHint: .isDirectory)
 		]
 	}
+}
+
+struct State: Codable {
+	struct ProjectState: Codable {
+		struct InstalledVersion: Codable {
+			let versionId: String
+			let fileHashes: Set<String>
+		}
+		
+		var skipped: [String] = []
+		var installed: InstalledVersion?
+	}
+	
+	var projects: [String: ProjectState] = [:]
 }
 
 struct Project: Codable {
@@ -50,12 +69,19 @@ struct Version: Codable {
 	}
 	
 	struct File: Codable {
+		struct Hashes: Codable {
+			let sha512: String
+		}
+		
 		let url: String
 		let filename: String
 		let primary: Bool
+		let hashes: Hashes
 	}
 	
+	let id: String
 	let versionNumber: String
+	let projectId: String
 	let changelog: String?
 	let dependencies: [Dependency]?
 	let files: [File]
@@ -65,8 +91,10 @@ struct Version: Codable {
 	
 	enum CodingKeys: String, CodingKey {
 		case versionNumber = "version_number"
+		case projectId = "project_id"
 		case gameVersions = "game_versions"
 		case datePublished = "date_published"
+		case id
 		case changelog
 		case dependencies
 		case files
@@ -81,7 +109,7 @@ struct ResponseError: Codable {
 
 enum ModpackError: Error {
 	case responseHeaders
-	case directoryMissing
+	case input
 	case api(_ error: String)
 }
 
@@ -89,6 +117,7 @@ enum ProjectType: String, Identifiable, CaseIterable {
 	case mod
 	case datapack
 	case resourcepack
+	case shaderpack
 	
 	var id: String { rawValue }
 }
