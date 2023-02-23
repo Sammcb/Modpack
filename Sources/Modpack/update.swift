@@ -47,7 +47,7 @@ extension Modpack {
 			return State.ProjectState.InstalledVersion(versionId: version.id, fileHashes: hashes)
 		}
 		
-		private func updateDependencies(for projectId: String, _ projectState: State.ProjectState, _ config: Config, _ showChangelog: Bool, _ state: State, _ checked: inout [String]) async throws -> State {
+		private func updateDependencies(for projectId: String, _ projectState: State.ProjectState, _ config: Config, _ state: State, _ checked: inout [String]) async throws -> State {
 			var updatedStateProjects = [projectId: projectState]
 			
 			guard let installedVersion = projectState.installed else {
@@ -63,7 +63,7 @@ extension Modpack {
 				
 				let dependencyMod = Config.Project(id: projectId)
 				let updatedStates = State(projects: state.projects.merging(updatedStateProjects, uniquingKeysWith: { (_, new ) in new }))
-				let dependencyStates = try await update(dependencyMod, config.loaders, config, showChangelog, updatedStates, &checked, dependency: true)
+				let dependencyStates = try await update(dependencyMod, config.loaders, config, updatedStates, &checked, dependency: true)
 				
 				updatedStateProjects.merge(dependencyStates.projects, uniquingKeysWith: { (_, new) in new })
 			}
@@ -71,13 +71,13 @@ extension Modpack {
 			return State(projects: updatedStateProjects)
 		}
 		
-		private func update(_ configProject: Config.Project, _ loaders: [String], _ config: Config, _ showChangelog: Bool, _ state: State, _ checked: inout [String], dependency: Bool = false) async throws -> State {
+		private func update(_ configProject: Config.Project, _ loaders: [String], _ config: Config, _ state: State, _ checked: inout [String], dependency: Bool = false) async throws -> State {
 			let dependencyLogModifier = dependency ? " dependency" : ""
 			
 			var projectState = state.projects.filter({ $0.key == configProject.id }).values.first ?? State.ProjectState()
 			
 			if checked.contains(configProject.id) {
-				return try await updateDependencies(for: configProject.id, projectState, config, showChangelog, state, &checked)
+				return try await updateDependencies(for: configProject.id, projectState, config, state, &checked)
 			}
 			
 			let project = try await getProject(for: configProject.id)
@@ -94,14 +94,14 @@ extension Modpack {
 			let versions = try await getVersions(for: project, loaders: loaders, mcVersions: config.versions).filter({ !projectState.skipped.contains($0.id) })
 			
 			guard let latestVersion = versions.first else {
-				return try await updateDependencies(for: project.id, projectState, config, showChangelog, state, &checked)
+				return try await updateDependencies(for: project.id, projectState, config, state, &checked)
 			}
 			
 			if let installedVersion = projectState.installed, installedVersion.versionId == latestVersion.id {
 				let fileHashes = Set(latestVersion.files.map({ $0.hashes.sha512 }))
 				if installedVersion.fileHashes.isSubset(of: fileHashes) {
 					logger.debug("\tLastest version already exists...")
-					return try await updateDependencies(for: project.id, projectState, config, showChangelog, state, &checked)
+					return try await updateDependencies(for: project.id, projectState, config, state, &checked)
 				}
 				
 				logger.warning("\tFiles for \(latestVersion.versionNumber) have changed. Clearing installed version...")
@@ -149,7 +149,7 @@ extension Modpack {
 			skipVersions.removeAll(where: { projectState.skipped.contains($0) })
 			projectState.skipped.append(contentsOf: skipVersions)
 
-			return try await updateDependencies(for: project.id, projectState, config, showChangelog, state, &checked)
+			return try await updateDependencies(for: project.id, projectState, config, state, &checked)
 		}
 		
 		mutating func run() async throws {
@@ -190,7 +190,7 @@ extension Modpack {
 				let projects = projects(for: projectType, config)
 				let loaders = loaders(for: projectType, config)
 				for project in projects {
-					let updatedState = try await update(project, loaders, config, showChangelog, state, &checkedProjects)
+					let updatedState = try await update(project, loaders, config, state, &checkedProjects)
 					newState.projects.merge(updatedState.projects, uniquingKeysWith: { (_, new) in new })
 					state.projects.merge(updatedState.projects, uniquingKeysWith: { (_, new) in new })
 				}
