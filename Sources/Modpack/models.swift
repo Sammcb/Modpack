@@ -110,6 +110,7 @@ struct ResponseError: Codable {
 enum ModpackError: Error {
 	case responseHeaders
 	case input
+	case noState
 	case api(_ error: String)
 }
 
