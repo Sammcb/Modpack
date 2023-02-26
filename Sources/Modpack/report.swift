@@ -34,9 +34,9 @@ extension Modpack {
 			
 			let project = try await getProject(for: configProject.id)
 			
-			let versions = try await getVersions(for: project, loaders: loaders, mcVersions: config.versions)
+			let projectVersions = try await getVersions(for: project, loaders: loaders, mcVersions: versions)
 			
-			guard let validVersion = versions.first else {
+			guard let validVersion = projectVersions.first else {
 				return [ProjectReport(id: project.id, name: project.title, valid: false, projectType: type, dependency: dependency)]
 			}
 			
