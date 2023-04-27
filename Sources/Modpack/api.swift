@@ -43,8 +43,13 @@ struct ApiConfig {
 	
 	static let userAgent = "github.com/Sammcb/Modpack/3.0.0 (sammcb.com)"
 	static let baseURL = URL(filePath: FileManager.default.currentDirectoryPath, directoryHint: .isDirectory)
-	static let configFileURL = baseURL.appending(path: "mods.json", directoryHint: .notDirectory)
+	static let configFileURL = baseURL.appending(path: "mods.json5", directoryHint: .notDirectory)
 	static let lockFileURL = baseURL.appending(path: "mods.lock", directoryHint: .notDirectory)
+	static var json5Decoder: JSONDecoder {
+		let decoder = JSONDecoder()
+		decoder.allowsJSON5 = true
+		return decoder
+	}
 }
 
 protocol ApiActor {}
@@ -201,7 +206,7 @@ extension ApiActor {
 			let files = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)
 			for fileURL in files {
 				// Ignore manually managed files
-				if config.manual.map({ $0.id }).contains(fileURL.lastPathComponent) {
+				if config.manual.contains(fileURL.lastPathComponent) {
 					continue
 				}
 				
@@ -285,7 +290,7 @@ extension ApiActor {
 		}
 	}
 	
-	func projects(for type: ProjectType, _ config: Config) -> [Config.Project] {
+	func projects(for type: ProjectType, _ config: Config) -> [String] {
 		switch type {
 		case .mod: return config.mods
 		case .datapack: return config.datapacks

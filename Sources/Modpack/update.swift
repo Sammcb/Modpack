@@ -65,8 +65,7 @@ extension Modpack {
 					continue
 				}
 				
-				let dependency = Config.Project(id: projectId)
-				let updateReport = try await update(dependency, config.loaders, config, state, checked, dependency: true)
+				let updateReport = try await update(projectId, config.loaders, config, state, checked, dependency: true)
 				state = updateReport.state
 				checked = updateReport.checked
 			}
@@ -74,22 +73,22 @@ extension Modpack {
 			return UpdateReport(state, checked)
 		}
 		
-		private func update(_ configProject: Config.Project, _ loaders: [String], _ config: Config, _ state: State, _ checked: [String], dependency: Bool = false) async throws -> UpdateReport {
+		private func update(_ configProjectId: String, _ loaders: [String], _ config: Config, _ state: State, _ checked: [String], dependency: Bool = false) async throws -> UpdateReport {
 			let dependencyLogModifier = dependency ? " dependency" : ""
 			
 			var checked = checked
 			
 			// Skip if already checked
-			if checked.contains(configProject.id) {
+			if checked.contains(configProjectId) {
 				return UpdateReport(state, checked)
 			}
 			
-			let project = try await getProject(for: configProject.id)
+			let project = try await getProject(for: configProjectId)
 			
 			checked.append(project.id)
 			
 			// Skip if ignored
-			if config.ignore.contains(where: { $0.id == project.id }) {
+			if config.ignore.contains(project.id) {
 				logger.debug("\tIgnoring\(dependencyLogModifier) \(project.title)...")
 				return UpdateReport(state, checked)
 			}
@@ -171,7 +170,7 @@ extension Modpack {
 			logger.logLevel = verbose ? .trace : .info
 			
 			let configData = try Data(contentsOf: ApiConfig.configFileURL)
-			let config = try JSONDecoder().decode(Config.self, from: configData)
+			let config = try ApiConfig.json5Decoder.decode(Config.self, from: configData)
 			
 			let versionsString = "[\(config.versions.joined(separator: ", "))]"
 			logger.info("Checking projects for updates for Minecraft version(s) \(versionsString)\n")
@@ -212,7 +211,7 @@ extension Modpack {
 			}
 			
 			// Remove projects that were not checked or are ignored
-			state.projects = state.projects.filter({ (project) in checked.contains(project.key) && !config.ignore.contains(where: { $0.id == project.key }) })
+			state.projects = state.projects.filter({ checked.contains($0.key) && !config.ignore.contains($0.key) })
 
 			let encoder = JSONEncoder()
 			encoder.outputFormatting = .prettyPrinted

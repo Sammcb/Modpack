@@ -1,23 +1,19 @@
 import Foundation
 
 struct Config: Codable {
-	struct Project: Codable {
-		let id: String
-	}
-	
 	let loaders: [String]
 	let versions: [String]
 	private let modsDirectory: String
-	let mods: [Config.Project]
-	let ignore: [Config.Project]
+	let mods: [String]
+	let ignore: [String]
 	private let datapacksDirectory: String
-	let datapacks: [Config.Project]
+	let datapacks: [String]
 	private let resourcepacksDirectory: String
-	let resourcepacks: [Config.Project]
+	let resourcepacks: [String]
 	let shaderLoaders: [String]
 	private let shaderpacksDirectory: String
-	let shaderpacks: [Config.Project]
-	let manual: [Config.Project]
+	let shaderpacks: [String]
+	let manual: [String]
 	
 	var directories: [ProjectType: URL] {
 		[

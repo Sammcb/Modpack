@@ -23,16 +23,16 @@ extension Modpack {
 			}
 		}
 		
-		private func report(_ configProject: Config.Project, _ type: ProjectType, _ loaders: [String], _ config: Config, checkedMods: [ProjectReport], dependency: Bool = false) async throws -> [ProjectReport] {
-			if checkedMods.contains(where: { $0.id == configProject.id }) {
+		private func report(_ configProjectId: String, _ type: ProjectType, _ loaders: [String], _ config: Config, checkedMods: [ProjectReport], dependency: Bool = false) async throws -> [ProjectReport] {
+			if checkedMods.contains(where: { $0.id == configProjectId }) {
 				return []
 			}
 			
-			if config.ignore.contains(where: { $0.id == configProject.id }) {
-				return [ProjectReport(id: configProject.id, name: "", valid: false, projectType: .mod, dependency: false, ignore: true)]
+			if config.ignore.contains(configProjectId) {
+				return [ProjectReport(id: configProjectId, name: "", valid: false, projectType: .mod, dependency: false, ignore: true)]
 			}
 			
-			let project = try await getProject(for: configProject.id)
+			let project = try await getProject(for: configProjectId)
 			
 			let projectVersions = try await getVersions(for: project, loaders: loaders, mcVersions: versions)
 			
@@ -47,8 +47,7 @@ extension Modpack {
 					continue
 				}
 				
-				let dependencyProject = Config.Project(id: projectId)
-				let dependencyReports = try await report(dependencyProject, type, loaders, config, checkedMods: checkedMods + [projectReport], dependency: true)
+				let dependencyReports = try await report(projectId, type, loaders, config, checkedMods: checkedMods + [projectReport], dependency: true)
 				
 				projectReports.append(contentsOf: dependencyReports)
 			}
@@ -60,7 +59,7 @@ extension Modpack {
 			logger.logLevel = .info
 			
 			let configData = try Data(contentsOf: ApiConfig.configFileURL)
-			let config = try JSONDecoder().decode(Config.self, from: configData)
+			let config = try ApiConfig.json5Decoder.decode(Config.self, from: configData)
 			
 			let versionsString = "[\(versions.joined(separator: ", "))]"
 			

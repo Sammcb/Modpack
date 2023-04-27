@@ -22,7 +22,7 @@ extension Modpack {
 			logger.logLevel = verbose ? .trace : .info
 			
 			let configData = try Data(contentsOf: ApiConfig.configFileURL)
-			let config = try JSONDecoder().decode(Config.self, from: configData)
+			let config = try ApiConfig.json5Decoder.decode(Config.self, from: configData)
 			
 			let versionsString = "[\(config.versions.joined(separator: ", "))]"
 			logger.info("Installing modpack for Minecraft version(s) \(versionsString)...\n")
