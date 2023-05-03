@@ -110,7 +110,7 @@ extension ApiActor {
 			throw ModpackError.responseHeaders
 		}
 		
-		if response.statusCode != 200 {
+		guard response.statusCode == 200 else {
 			logger.error("GET \(url) status \(response.statusCode)")
 			throw ModpackError.requestStatus
 		}
