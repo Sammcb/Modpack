@@ -110,6 +110,11 @@ extension ApiActor {
 			throw ModpackError.responseHeaders
 		}
 		
+		guard response.statusCode == 200 else {
+			logger.error("GET \(url) status \(response.statusCode)")
+			throw ModpackError.requestStatus
+		}
+		
 		if let error = try? decoder.decode(ResponseError.self, from: data) {
 			logger.error("\(error.description)")
 			throw ModpackError.api(error.error)
