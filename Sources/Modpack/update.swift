@@ -53,7 +53,7 @@ extension Modpack {
 		
 		private func updateDependencies(for projectId: String, _ config: Config, _ state: State, _ checked: [String]) async throws -> UpdateReport {
 			guard let versionId = state.projects[projectId]?.installed?.versionId else {
-				throw ModpackError.noState
+				return UpdateReport(state, checked)
 			}
 			
 			var state = state
