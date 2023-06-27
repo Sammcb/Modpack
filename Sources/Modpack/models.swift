@@ -39,6 +39,20 @@ struct State: Codable {
 	var projects: [String: ProjectState] = [:]
 }
 
+struct LoaderTag: Codable {
+	let name: String
+	let supportedProjectTypes: [String]
+	
+	enum CodingKeys: String, CodingKey {
+		case supportedProjectTypes = "supported_project_types"
+		case name
+	}
+}
+
+struct GameVersionTag: Codable {
+	let version: String
+}
+
 struct Project: Codable {
 	let title: String
 	let id: String
@@ -104,10 +118,18 @@ struct ResponseError: Codable {
 }
 
 enum ModpackError: Error {
+	case datapackProjectType
+	case resourcepackProjectType
 	case responseHeaders
 	case requestStatus
 	case input
 	case api(_ error: String)
+}
+
+enum ConfigError: Error {
+	case loaders(_ error: String)
+	case versions(_ error: String)
+	case shaderLoaders(_ error: String)
 }
 
 enum ProjectType: String, Identifiable, CaseIterable {
@@ -117,4 +139,9 @@ enum ProjectType: String, Identifiable, CaseIterable {
 	case shaderpack
 	
 	var id: String { rawValue }
+}
+
+enum TagType: String {
+	case loader
+	case gameVersion = "game_version"
 }

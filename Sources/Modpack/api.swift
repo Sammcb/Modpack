@@ -41,14 +41,20 @@ extension JSONEncoder.DateEncodingStrategy {
 struct ApiConfig {
 	private init() {}
 	
-	static let userAgent = "github.com/Sammcb/Modpack/3.0.0 (sammcb.com)"
+	static let userAgent = "github.com/Sammcb/Modpack/\(Modpack.configuration.version) (sammcb.com)"
 	static let baseURL = URL(filePath: FileManager.default.currentDirectoryPath, directoryHint: .isDirectory)
 	static let configFileURL = baseURL.appending(path: "mods.json5", directoryHint: .notDirectory)
 	static let lockFileURL = baseURL.appending(path: "mods.lock", directoryHint: .notDirectory)
-	static var json5Decoder: JSONDecoder {
-		let decoder = JSONDecoder()
-		decoder.allowsJSON5 = true
-		return decoder
+	static let datapackLoader = "datapack"
+	static let resourcepackLoader = "minecraft"
+	static var config: Config {
+		get throws {
+			let decoder = JSONDecoder()
+			decoder.allowsJSON5 = true
+			let configData = try Data(contentsOf: configFileURL)
+			let config = try decoder.decode(Config.self, from: configData)
+			return config
+		}
 	}
 }
 
@@ -123,6 +129,57 @@ extension ApiActor {
 		try await avoidRateLimit(using: response)
 		
 		return data
+	}
+	
+	private func getLoaderTags() async throws -> [LoaderTag] {
+		var components = baseURLComponents
+		components.path.append("tag/\(TagType.loader.rawValue)")
+		
+		let data = try await get(components.url!)
+		
+		return try decoder.decode([LoaderTag].self, from: data)
+	}
+	
+	private func getGameVersionTags() async throws -> [GameVersionTag] {
+		var components = baseURLComponents
+		components.path.append("tag/\(TagType.gameVersion.rawValue)")
+		
+		let data = try await get(components.url!)
+		
+		return try decoder.decode([GameVersionTag].self, from: data)
+	}
+	
+	func validateConfig() async throws {
+		let config = try ApiConfig.config
+		let loaderTags = try await getLoaderTags()
+		
+		guard loaderTags.contains(where: { $0.name == ApiConfig.datapackLoader }) else {
+			throw ModpackError.datapackProjectType
+		}
+		
+		guard loaderTags.contains(where: { $0.name == ApiConfig.resourcepackLoader && $0.supportedProjectTypes.contains("resourcepack") }) else {
+			throw ModpackError.resourcepackProjectType
+		}
+		
+		for loader in config.loaders {
+			guard loaderTags.contains(where: { $0.name == loader && $0.supportedProjectTypes.contains("mod") }) else {
+				throw ConfigError.loaders("Loader [\(loader)] invalid")
+			}
+		}
+		
+		for shaderLoader in config.shaderLoaders {
+			guard loaderTags.contains(where: { $0.name == shaderLoader && $0.supportedProjectTypes.contains("shader") }) else {
+				throw ConfigError.shaderLoaders("Loader [\(shaderLoader)] invalid")
+			}
+		}
+		
+		let gameVersionTags = try await getGameVersionTags()
+		
+		for version in config.versions {
+			guard gameVersionTags.contains(where: { $0.version == version }) else {
+				throw ConfigError.versions("Version [\(version)] invalid")
+			}
+		}
 	}
 	
 	func getProject(for id: String) async throws -> Project {

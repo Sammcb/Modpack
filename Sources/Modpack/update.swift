@@ -169,8 +169,9 @@ extension Modpack {
 		mutating func run() async throws {
 			logger.logLevel = verbose ? .trace : .info
 			
-			let configData = try Data(contentsOf: ApiConfig.configFileURL)
-			let config = try ApiConfig.json5Decoder.decode(Config.self, from: configData)
+			try await validateConfig()
+			
+			let config = try ApiConfig.config
 			
 			let versionsString = "[\(config.versions.joined(separator: ", "))]"
 			logger.info("Checking projects for updates for Minecraft version(s) \(versionsString)\n")
