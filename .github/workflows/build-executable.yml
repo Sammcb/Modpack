@@ -17,7 +17,7 @@ jobs:
       run: |
         swift build -c release --arch arm64 --arch x86_64
     - name: Archive executable
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: Modpack
         path: .build/apple/Products/Release/Modpack
